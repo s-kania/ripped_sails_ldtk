@@ -231,6 +231,7 @@ class Level {
 			neighbourLevels: json.__neighbours,
 
 			customFields: {},
+			autoLayerTiles: [],
 
 			layers : {
 				var out = [];
@@ -248,6 +249,22 @@ class Level {
 			},
 
 			entities : {},
+		}
+
+		for (li in layerInstances) {
+			if (li.def.type == AutoLayer && li.autoTilesCache != null) {
+				for (ruleMap in li.autoTilesCache) {
+					for (coordMap in ruleMap) {
+						for (tile in coordMap) {
+							simpleJson.autoLayerTiles.push({
+								x: tile.x + li.pxTotalOffsetX,
+								y: tile.y + li.pxTotalOffsetY,
+								tileNumber: tile.tid
+							});
+						}
+					}
+				}
+			}
 		}
 
 		// Level custom fields

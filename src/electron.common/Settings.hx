@@ -96,7 +96,7 @@ class Settings {
 			showDetails: true,
 			useBestGPU: true,
 			startFullScreen: false,
-			autoInstallUpdates: true,
+			autoInstallUpdates: false,
 			colorBlind: false,
 			blurMask: true,
 			navigationKeys: null,

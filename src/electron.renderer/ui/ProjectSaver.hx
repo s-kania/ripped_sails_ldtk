@@ -248,38 +248,24 @@ class ProjectSaver extends dn.Process {
 
 
 			case WritingImages:
-				var baseDir = project.simplifiedExport
-					? project.getAbsExternalFilesDir()+"/simplified"
-					: project.getAbsExternalFilesDir()+"/png";
-
-				if( project.getImageExportMode()!=None ) {
+				if( !project.simplifiedExport && project.getImageExportMode()!=None ) {
 					logState();
-					var ops = [];
-					var count = 0;
+					var pngDir = project.getAbsExternalFilesDir()+"/png";
 
-					// Init dir
-					if( project.simplifiedExport ) {
-						if( NT.fileExists(baseDir) )
-							NT.removeDir(baseDir);
-						NT.createDirs(baseDir);
-					}
+					if( project.getImageExportMode()==None )
+						NT.removeDir(pngDir);
 					else
-						initDir(baseDir, "png");
-
+						initDir(pngDir, "png");
 
 					// Export level layers
 					var lr = new display.LayerRender();
+					var allOps = [];
 					for( world in project.worlds )
 					for( level in world.levels ) {
-						var pngDir = baseDir;
-						if( project.simplifiedExport ) {
-							pngDir = baseDir + "/" + level.identifier;
-							initDir(pngDir, "png");
-						}
-
+						var pngDir = pngDir;
 						var level = level;
 
-						ops.push({
+						allOps.push({
 							label: "Level "+level.identifier,
 							cb: ()->{
 								log('Level ${level.identifier}...');
@@ -296,10 +282,9 @@ class ProjectSaver extends dn.Process {
 												return;
 											}
 											var fp = dn.FilePath.fromDir(pngDir);
-											fp.fileName = project.simplifiedExport ? "_bg" : level.identifier+"_bg";
+											fp.fileName = level.identifier+"_bg";
 											fp.extension = "png";
 											NT.writeFileBytes(fp.full, bytes);
-											count++;
 										}
 
 										// Layers
@@ -322,14 +307,13 @@ class ProjectSaver extends dn.Process {
 													mainLayerImages.set(li.layerDefUid, i);
 												var fp = dn.FilePath.fromDir(pngDir);
 												fp.fileName = project.getPngFileName(
-													project.simplifiedExport ? "%layer_name" : null,
+													null,
 													level,
 													li.def,
 													i.secondarySuffix
 												);
 												fp.extension = "png";
 												NT.writeFileBytes(fp.full, i.bytes);
-												count++;
 											}
 										}
 
@@ -353,12 +337,9 @@ class ProjectSaver extends dn.Process {
 
 											// Save PNG
 											var fp = dn.FilePath.fromDir(pngDir);
-											fp.fileName = project.simplifiedExport
-												? "_composite"
-												: level.identifier;
+											fp.fileName = level.identifier;
 											fp.extension = "png";
 											NT.writeFileBytes(fp.full, pngBytes);
-											count++;
 										}
 
 									case OneImagePerLevel:
@@ -376,14 +357,12 @@ class ProjectSaver extends dn.Process {
 										fp.fileName = project.getPngFileName(level, project.defs.layers[0]);
 										fp.extension = "png";
 										NT.writeFileBytes(fp.full, pngBytes);
-										count++;
-
 								}
 							}
 						});
 					}
-					new ui.modal.Progress(Lang.t._("PNG export"), ops, ()->{
-						log('  Saved $count PNG(s)...');
+					new ui.modal.Progress(Lang.t._("PNG export"), allOps, ()->{
+						log('  Saved PNG(s)...');
 					});
 				}
 				else {
@@ -391,11 +370,6 @@ class ProjectSaver extends dn.Process {
 					NT.removeDir( project.getAbsExternalFilesDir()+"/png" );
 					beginNextState();
 				}
-
-				// Also remove PNG dir if Simplified export is enabled
-				if( project.simplifiedExport )
-					NT.removeDir( project.getAbsExternalFilesDir()+"/png" );
-
 
 			case ExportingTiled:
 				if( project.exportTiled ) {
@@ -469,30 +443,12 @@ class ProjectSaver extends dn.Process {
 								// Build JSON
 								var simpleJson = l.toSimplifiedJson();
 
-								// Write data.json file
+								// Write JSON file
 								var fp = dirFp.clone();
-								fp.appendDirectory(l.identifier);
-								fp.fileWithExt = "data.json";
+								fp.fileWithExt = l.identifier + ".json";
 								NT.writeFileString( fp.full, dn.data.JsonPretty.stringify( simpleJson, Full ) );
 							},
 						});
-
-						// IntGrids as CSV
-						for( li in l.layerInstances) {
-							if( li.def.type!=IntGrid )
-								continue;
-							var csv = new exporter.Csv(li.cWid, li.cHei);
-							for(cy in 0...li.cHei)
-							for(cx in 0...li.cWid)
-								csv.set(cx,cy, li.getIntGrid(cx,cy));
-
-							// Write CSV file
-							var fp = dirFp.clone();
-							fp.appendDirectory(l.identifier);
-							fp.fileName = li.def.identifier;
-							fp.extension = "csv";
-							NT.writeFileString( fp.full, csv.toString2D() );
-						}
 					}
 				}
 				else {
@@ -500,7 +456,6 @@ class ProjectSaver extends dn.Process {
 						NT.removeDir(dirFp.full);
 					beginNextState();
 				}
-
 
 			case AfterSavingCustomCommands:
 				ui.modal.dialog.CommandRunner.runMultipleCommands( project, project.getCustomCommmands(AfterSave), beginNextState );
