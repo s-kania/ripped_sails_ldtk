@@ -232,7 +232,6 @@ class Level {
 
 			customFields: {},
 			autoLayerTiles: [],
-
 			layers : {
 				var out = [];
 				iterateLayerInstancesBottomToTop( (li)->{
@@ -242,8 +241,13 @@ class Level {
 						case Tiles: true;
 						case AutoLayer: true;
 					}
-					if( show )
-						out.push( li.def.identifier+".png" );
+					if( show ) {
+						out.push({
+							identifier: li.def.identifier,
+							pathfindingTraversable: li.def.pathfindingTraversable,
+							file: li.def.identifier+".png"
+						});
+					}
 				});
 				out;
 			},

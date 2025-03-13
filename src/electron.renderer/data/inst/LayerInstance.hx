@@ -216,6 +216,7 @@ class LayerInstance {
 			__pxTotalOffsetY: pxOffsetY + def.pxOffsetY,
 			__tilesetDefUid: td!=null ? td.uid : null,
 			__tilesetRelPath: td!=null ? td.relPath : null,
+			__pathfindingTraversable: def.pathfindingTraversable,
 
 			iid: iid,
 			levelId: levelId,

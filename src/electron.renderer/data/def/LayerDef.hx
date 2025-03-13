@@ -22,6 +22,7 @@ class LayerDef {
 	public var hideFieldsWhenInactive = false;
 	public var canSelectWhenInactive = true;
 	public var renderInWorldView = true;
+	public var pathfindingTraversable = false;
 	public var pxOffsetX : Int = 0;
 	public var pxOffsetY : Int = 0;
 	public var parallaxFactorX : Float = 0.;
@@ -109,6 +110,7 @@ class LayerDef {
 		o.hideFieldsWhenInactive = JsonTools.readBool(json.hideFieldsWhenInactive, true);
 		o.canSelectWhenInactive = JsonTools.readBool(json.canSelectWhenInactive, true);
 		o.renderInWorldView = JsonTools.readBool(json.renderInWorldView, true);
+		o.pathfindingTraversable = JsonTools.readBool(json.pathfindingTraversable, true);
 		o.pxOffsetX = JsonTools.readInt(json.pxOffsetX, 0);
 		o.pxOffsetY = JsonTools.readInt(json.pxOffsetY, 0);
 		o.parallaxFactorX = JsonTools.readFloat(json.parallaxFactorX, 0);
@@ -188,6 +190,7 @@ class LayerDef {
 			hideFieldsWhenInactive: hideFieldsWhenInactive,
 			canSelectWhenInactive: canSelectWhenInactive,
 			renderInWorldView: renderInWorldView,
+			pathfindingTraversable: pathfindingTraversable,
 			pxOffsetX: pxOffsetX,
 			pxOffsetY: pxOffsetY,
 			parallaxFactorX: parallaxFactorX,

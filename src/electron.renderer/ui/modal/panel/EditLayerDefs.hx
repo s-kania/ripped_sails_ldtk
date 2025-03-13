@@ -347,6 +347,9 @@ class EditLayerDefs extends ui.modal.Panel {
 		var i = Input.linkToHtmlInput( cur.canSelectWhenInactive, jForms.find("input[name='canSelectWhenInactive']") );
 		i.onChange = editor.ge.emit.bind(LayerDefChanged(cur.uid, false));
 
+		var i = Input.linkToHtmlInput( cur.pathfindingTraversable, jForms.find("input[name='pathfindingTraversable']") );
+		i.onChange = editor.ge.emit.bind(LayerDefChanged(cur.uid, false));
+
 		// UI tags
 		var ted = new TagEditor(
 			cur.uiFilterTags,
