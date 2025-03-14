@@ -216,7 +216,6 @@ class LayerInstance {
 			__pxTotalOffsetY: pxOffsetY + def.pxOffsetY,
 			__tilesetDefUid: td!=null ? td.uid : null,
 			__tilesetRelPath: td!=null ? td.relPath : null,
-			__pathfindingTraversable: def.pathfindingTraversable,
 
 			iid: iid,
 			levelId: levelId,
@@ -289,7 +288,7 @@ class LayerInstance {
 			},
 
 			entityInstances: entityInstances.map( function(ei) return ei.toJson(this) ),
-		}
+		};
 
 		if( _project.hasFlag(ExportPreCsvIntGridFormat) )
 			json.intGrid = {
@@ -301,6 +300,9 @@ class LayerInstance {
 					});
 				arr;
 			}
+
+		// Add custom field using untyped
+		untyped json.__pathfindingTraversable = def.pathfindingTraversable;
 
 		return json;
 	}
@@ -365,6 +367,9 @@ class LayerInstance {
 		li.pxOffsetX = JsonTools.readInt(json.pxOffsetX, 0);
 		li.pxOffsetY = JsonTools.readInt(json.pxOffsetY, 0);
 		li.visible = JsonTools.readBool(json.visible, true);
+
+		// Read pathfindingTraversable using untyped
+		li.def.pathfindingTraversable = untyped json.__pathfindingTraversable == true;
 
 		if( json.intGridCsv==null ) {
 			// Read old pre-CSV format
@@ -509,7 +514,7 @@ class LayerInstance {
 								autoTilesCache = null;
 							anyChange = true;
 							// no logging as this could be a LOT of entries
-						}
+					}
 
 				if( def.isAutoLayer() && autoTilesCache!=null ) {
 					// Discard lost rules autoTiles
@@ -618,7 +623,7 @@ class LayerInstance {
 					var newCoordId = newCx + newCy * newCWid;
 					if( old.exists(coordId(cx,cy)) && newCx>=0 && newCx<newCWid && newCy>=0 && newCy<newCHei )
 						gridTiles.set( newCoordId, old.get(coordId(cx,cy)) );
-				}
+					}
 
 		}
 

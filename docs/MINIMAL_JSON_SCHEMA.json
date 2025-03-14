@@ -1463,6 +1463,7 @@
 				"parallaxFactorX",
 				"parallaxFactorY",
 				"parallaxScaling",
+				"pathfindingTraversable",
 				"pxOffsetX",
 				"pxOffsetY",
 				"uid"

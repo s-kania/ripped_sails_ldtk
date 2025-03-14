@@ -244,7 +244,7 @@ class Level {
 					if( show ) {
 						out.push({
 							identifier: li.def.identifier,
-							pathfindingTraversable: li.def.pathfindingTraversable,
+							// pathfindingTraversable: li.def.pathfindingTraversable,
 							file: li.def.identifier+".png"
 						});
 					}
