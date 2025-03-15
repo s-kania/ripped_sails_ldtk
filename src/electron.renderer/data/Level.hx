@@ -231,36 +231,21 @@ class Level {
 			neighbourLevels: json.__neighbours,
 
 			customFields: {},
-			autoLayerTiles: [],
-			layers : {
-				var out = [];
-				iterateLayerInstancesBottomToTop( (li)->{
-					var show = switch li.def.type {
-						case IntGrid: li.def.isAutoLayer();
-						case Entities: false;
-						case Tiles: true;
-						case AutoLayer: true;
-					}
-					if( show ) {
-						out.push({
-							identifier: li.def.identifier,
-							// pathfindingTraversable: li.def.pathfindingTraversable,
-							file: li.def.identifier+".png"
-						});
-					}
-				});
-				out;
-			},
-
+			layers : {},
 			entities : {},
 		}
 
 		for (li in layerInstances) {
-			if (li.def.type == AutoLayer && li.autoTilesCache != null) {
+			if ((li.def.type == AutoLayer || li.def.type == IntGrid) && li.autoTilesCache != null) {
+				var layerArray = Reflect.field(simpleJson.layers, li.def.identifier);
+				if (layerArray == null) {
+					layerArray = [];
+					Reflect.setField(simpleJson.layers, li.def.identifier, layerArray);
+				}
 				for (ruleMap in li.autoTilesCache) {
 					for (coordMap in ruleMap) {
 						for (tile in coordMap) {
-							simpleJson.autoLayerTiles.push({
+							layerArray.push({
 								x: tile.x + li.pxTotalOffsetX,
 								y: tile.y + li.pxTotalOffsetY,
 								tileNumber: tile.tid
