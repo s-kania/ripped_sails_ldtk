@@ -302,7 +302,7 @@ class LayerInstance {
 			}
 
 		// Add custom field using untyped
-		untyped json.__pathfindingTraversable = def.pathfindingTraversable;
+		untyped json.__pathfindingCollisionLayer = def.pathfindingCollisionLayer;
 
 		return json;
 	}
@@ -368,8 +368,8 @@ class LayerInstance {
 		li.pxOffsetY = JsonTools.readInt(json.pxOffsetY, 0);
 		li.visible = JsonTools.readBool(json.visible, true);
 
-		// Read pathfindingTraversable using untyped
-		li.def.pathfindingTraversable = untyped json.__pathfindingTraversable == true;
+		// Read pathfindingCollisionLayer using untyped
+		li.def.pathfindingCollisionLayer = untyped json.__pathfindingCollisionLayer == true;
 
 		if( json.intGridCsv==null ) {
 			// Read old pre-CSV format
