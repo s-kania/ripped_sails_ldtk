@@ -433,6 +433,25 @@ class ProjectSaver extends dn.Process {
 					logState();
 					initDir(dirFp.full, "json");
 
+					// Collect all level data first
+					var mainLevels = [];
+					for(w in project.worlds)
+					for(l in w.levels) {
+						mainLevels.push({
+							identifier: l.identifier,
+							path: 'simplified/' + l.identifier
+						});
+					}
+
+					// Write main.json first
+					var mainFp = dirFp.clone();
+					mainFp.fileWithExt = "main.json";
+					NT.writeFileString(
+						mainFp.full,
+						dn.data.JsonPretty.stringify({ levels: mainLevels }, Full)
+					);
+
+					// Process individual level files
 					var p = new ui.modal.Progress( "Simplified data...", ()->beginNextState() );
 					for(w in project.worlds)
 					for(l in w.levels) {
