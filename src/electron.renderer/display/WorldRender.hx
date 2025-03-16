@@ -1128,6 +1128,10 @@ class WorldRender extends dn.Process {
 		// Calculate appropriate line thickness based on zoom level
 		var zoomScale = 1 / camera.adjustedZoom;
 		var lineThickness = Math.max(1, 2 * zoomScale);
+		var pointSize = Math.max(2, 3 * zoomScale);
+		
+		// Collection of unique entities to render as circles
+		var entitiesToRender = new Map<String, {ei:data.inst.EntityInstance, x:Float, y:Float}>();
 		
 		// Process all levels in the current world
 		for (l in curWorld.levels) {
@@ -1137,17 +1141,32 @@ class WorldRender extends dn.Process {
 			
 			// Process each layer instance
 			for (li in l.layerInstances) {
-				if (li.def.type != Entities)
+				// Only render connections for the pathfinding layer
+				if (li.def.type != Entities || li.def.identifier != "pathfinding")
 					continue;
 				
 				// Process each entity
 				for (ei in li.entityInstances) {
+					// Save this entity for later rendering
+					var worldX = ei.worldX + ei._li.pxTotalOffsetX;
+					var worldY = ei.worldY + ei._li.pxTotalOffsetY;
+					entitiesToRender.set(ei.iid + "", {ei: ei, x: worldX, y: worldY});
+					
 					// Find entity instances referring to this entity
 					for (refEi in project.getEntityInstancesReferingTo(ei)) {
+						// Skip if not in pathfinding layer
+						if (refEi._li.def.identifier != "pathfinding")
+							continue;
+						
 						// Get the field instance that creates this reference
 						var fi = refEi.getEntityRefFieldTo(ei, true);
 						if (fi == null || !fi.def.refLinkIsDisplayed())
 							continue;
+						
+						// Save this entity for later rendering
+						var refWorldX = refEi.worldX + refEi._li.pxTotalOffsetX;
+						var refWorldY = refEi.worldY + refEi._li.pxTotalOffsetY;
+						entitiesToRender.set(refEi.iid + "", {ei: refEi, x: refWorldX, y: refWorldY});
 						
 						// Get reference endpoints
 						var col = refEi.getSmartColor(false);
@@ -1164,7 +1183,6 @@ class WorldRender extends dn.Process {
 						g.lineTo(targetX, targetY);
 						
 						// Draw connection points for better visibility
-						var pointSize = Math.max(2, 3 * zoomScale);
 						g.lineStyle(0);
 						g.beginFill(col, 1);
 						g.drawCircle(sourceX, sourceY, pointSize);
@@ -1172,6 +1190,52 @@ class WorldRender extends dn.Process {
 						g.endFill();
 					}
 				}
+			}
+		}
+		
+		// Render all entities as circles or icons
+		for (info in entitiesToRender) {
+			var ei = info.ei;
+			var worldX = info.x;
+			var worldY = info.y;
+			var col = ei.getSmartColor(false);
+			
+			// Try to get entity tile first
+			var smartTile = ei.getSmartTile();
+			if (smartTile != null) {
+				// Render entity tile if available
+				var td = editor.project.defs.getTilesetDef(smartTile.tilesetUid);
+				if (td != null && td.isAtlasLoaded()) {
+					try {
+						var t = td.getTileRect(smartTile);
+						if (t != null) {
+							var iconSize = Math.max(10, 15 * zoomScale);
+							var bmp = new h2d.Bitmap(t, connectionsWrapper);
+							bmp.setPosition(worldX - iconSize/2, worldY - iconSize/2);
+							var scale = iconSize / Math.max(t.width, t.height);
+							bmp.setScale(scale);
+							bmp.alpha = 0.9;
+						}
+					} catch (e:Dynamic) {
+						// Fall back to circle if tile rendering fails
+						g.lineStyle(lineThickness * 0.5, C.toWhite(col, 0.3), 1);
+						g.beginFill(col, 0.7);
+						g.drawCircle(worldX, worldY, Math.max(4, 6 * zoomScale));
+						g.endFill();
+					}
+				} else {
+					// Fall back to circle if tileset isn't loaded
+					g.lineStyle(lineThickness * 0.5, C.toWhite(col, 0.3), 1);
+					g.beginFill(col, 0.7);
+					g.drawCircle(worldX, worldY, Math.max(4, 6 * zoomScale));
+					g.endFill();
+				}
+			} else {
+				// Default: render as circle with entity color
+				g.lineStyle(lineThickness * 0.5, C.toWhite(col, 0.3), 1);
+				g.beginFill(col, 0.7);
+				g.drawCircle(worldX, worldY, Math.max(4, 6 * zoomScale));
+				g.endFill();
 			}
 		}
 	}
