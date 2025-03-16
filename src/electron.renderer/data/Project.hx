@@ -59,6 +59,8 @@ class Project {
 
 	var cachedToc : Array<ldtk.Json.TableOfContentEntry> = [];
 
+	public var showPathfindingPaths : Bool = false;
+
 	private function new() {
 		jsonVersion = Const.getJsonVersion();
 		bgColor = DEFAULT_WORKSPACE_BG;
@@ -322,6 +324,7 @@ class Project {
 		if( json.exportPng!=null )
 			p.imageExportMode = json.exportPng==true ? OneImagePerLayer : None;
 		p.exportLevelBg = JsonTools.readBool(json.exportLevelBg, true);
+		p.showPathfindingPaths = untyped JsonTools.readBool( json.showPathfindingPaths, false );
 
 		Definitions.fromJson(p, json.defs);
 
@@ -626,7 +629,6 @@ class Project {
 			}
 	}
 
-
 	public function toJson() : ldtk.Json.ProjectJson {
 		var json : ldtk.Json.ProjectJson = {
 			iid: iid,
@@ -696,6 +698,7 @@ class Project {
 			// },
 		}
 
+		untyped json.showPathfindingPaths = showPathfindingPaths;
 		return json;
 	}
 

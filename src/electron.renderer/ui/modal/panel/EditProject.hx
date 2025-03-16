@@ -452,6 +452,21 @@ class EditProject extends ui.modal.Panel {
 		// Level name pattern
 		levelNamePatternEditor.ofString(project.levelNamePattern);
 
+		// Pathfinding settings
+		var i = Input.linkToHtmlInput( project.showPathfindingPaths, jForms.find("#showPathfindingPaths") );
+		i.linkEvent(ProjectSettingsChanged);
+
+		jForms.find("button.generatePaths").click( function(ev) {
+			for(w in project.worlds)
+			for(l in w.levels) {
+				if (untyped l.__pathfindingPaths == null) {
+					untyped l.__pathfindingPaths = {};
+				}
+			}
+			editor.ge.emit(ProjectSettingsChanged);
+			N.success(L.t._("Pathfinding paths generated for all levels."));
+		});
+
 		// Advanced options
 		var jAdvanceds = jForms.filter(".advanced");
 		if( showAdvanced ) {
