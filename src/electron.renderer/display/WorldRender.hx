@@ -1,5 +1,7 @@
 package display;
 
+import misc.WorldRect;
+
 typedef WorldLevelRender = {
 	var worldIid : String;
 	var uid : Int;
@@ -47,6 +49,7 @@ class WorldRender extends dn.Process {
 	var currentHighlight : h2d.Graphics;
 	public var worldLayers : Map<Int,h2d.Layers>;
 	var fieldsWrapper : h2d.Object;
+	var connectionsWrapper : h2d.Object;
 
 	var invalidatedCameraBasedRenders = true;
 
@@ -92,6 +95,9 @@ class WorldRender extends dn.Process {
 		fieldsWrapper = new h2d.Object();
 		root.add(fieldsWrapper, Const.DP_TOP);
 
+		connectionsWrapper = new h2d.Object();
+		root.add(connectionsWrapper, Const.DP_TOP);
+
 		currentHighlight = new h2d.Graphics();
 		root.add(currentHighlight, Const.DP_TOP);
 	}
@@ -115,7 +121,8 @@ class WorldRender extends dn.Process {
 		updateAxesPos();
 		renderGrids();
 		renderWorldBg();
-		updateCurrentHighlight();
+		updateLayout();
+		sortWorldDepths();
 	}
 
 	function onGlobalEvent(e:GlobalEvent) {
@@ -133,6 +140,7 @@ class WorldRender extends dn.Process {
 				updateAxesPos();
 				invalidateCameraBasedRenders();
 				invalidateLevelFields(editor.curLevel);
+				renderWorldViewConnections();
 
 				if( settings.v.nearbyTilesRenderingDist>0 )
 					invalidateNearbyLevels(editor.curLevel);
@@ -458,11 +466,16 @@ class WorldRender extends dn.Process {
 		}
 
 		renderWorldBg();
+		renderWorldBounds();
+		updateCurrentHighlight();
 		updateAxesPos();
 		renderGrids();
-		renderWorldBounds();
+		updateWorldTitle();
 		updateLayout();
 		sortWorldDepths();
+		
+		// Render connections
+		renderWorldViewConnections();
 	}
 
 	function updateBgColor() {
@@ -523,13 +536,13 @@ class WorldRender extends dn.Process {
 				switch curWorld.worldLayout {
 					case Free, GridVania:
 						wl.fieldsRender.setScale( M.fmin(1/camera.adjustedZoom, M.fmin( l.pxWid/wl.fieldsRender.outerWidth, l.pxHei/wl.fieldsRender.outerHeight) ) );
-						wl.fieldsRender.x = Std.int( l.worldCenterX - wl.fieldsRender.outerWidth*0.5*wl.fieldsRender.scaleX );
-						wl.fieldsRender.y = Std.int( l.worldY + l.pxHei - wl.fieldsRender.outerHeight*wl.fieldsRender.scaleY );
+						wl.fieldsRender.x = Std.int( l.worldX + l.pxWid + fieldsPadding * 1.5 );
+						wl.fieldsRender.y = Std.int( l.worldY + 12 );
 
 					case LinearHorizontal:
-						wl.fieldsRender.setScale( M.fmin(1/camera.adjustedZoom, l.pxWid/wl.fieldsRender.outerWidth ) );
-						wl.fieldsRender.x = Std.int( l.worldCenterX - wl.fieldsRender.outerWidth*0.5*wl.fieldsRender.scaleX );
-						wl.fieldsRender.y = Std.int( l.worldY + l.pxHei + 32 );
+						wl.fieldsRender.setScale( 1/camera.adjustedZoom );
+						wl.fieldsRender.x = Std.int( l.worldX + l.pxWid + fieldsPadding );
+						wl.fieldsRender.y = Std.int( l.worldY );
 
 					case LinearVertical:
 						wl.fieldsRender.setScale( M.fmin(1/camera.adjustedZoom, l.pxHei/wl.fieldsRender.outerHeight ) );
@@ -1096,6 +1109,72 @@ class WorldRender extends dn.Process {
 		wl.identifier.color.setColor( l.getSmartColor(false).toBlack(0.3).withAlpha(l.useAutoIdentifier ? 0.4 : 1) );
 	}
 
+	/** Render all entity connections in world view mode **/
+	function renderWorldViewConnections() {
+		if (!editor.worldMode) {
+			connectionsWrapper.visible = false;
+			return;
+		}
+
+		App.LOG.render('Rendering world view connections...');
+		
+		// Clear previous connections
+		connectionsWrapper.removeChildren();
+		connectionsWrapper.visible = true;
+		
+		// Create a new graphics object for connections
+		var g = new h2d.Graphics(connectionsWrapper);
+		
+		// Calculate appropriate line thickness based on zoom level
+		var zoomScale = 1 / camera.adjustedZoom;
+		var lineThickness = Math.max(1, 2 * zoomScale);
+		
+		// Process all levels in the current world
+		for (l in curWorld.levels) {
+			// Skip if not on the current world depth
+			if (l.worldDepth != editor.curWorldDepth)
+				continue;
+			
+			// Process each layer instance
+			for (li in l.layerInstances) {
+				if (li.def.type != Entities)
+					continue;
+				
+				// Process each entity
+				for (ei in li.entityInstances) {
+					// Find entity instances referring to this entity
+					for (refEi in project.getEntityInstancesReferingTo(ei)) {
+						// Get the field instance that creates this reference
+						var fi = refEi.getEntityRefFieldTo(ei, true);
+						if (fi == null || !fi.def.refLinkIsDisplayed())
+							continue;
+						
+						// Get reference endpoints
+						var col = refEi.getSmartColor(false);
+						
+						// Calculate world coordinates
+						var sourceX = refEi.worldX + refEi.getRefAttachX(fi.def) - refEi.x + refEi._li.pxTotalOffsetX;
+						var sourceY = refEi.worldY + refEi.getRefAttachY(fi.def) - refEi.y + refEi._li.pxTotalOffsetY;
+						var targetX = ei.worldX + ei.getRefAttachX(fi.def) - ei.x + ei._li.pxTotalOffsetX;
+						var targetY = ei.worldY + ei.getRefAttachY(fi.def) - ei.y + ei._li.pxTotalOffsetY;
+						
+						// Draw the connection line
+						g.lineStyle(lineThickness, col, 1);
+						g.moveTo(sourceX, sourceY);
+						g.lineTo(targetX, targetY);
+						
+						// Draw connection points for better visibility
+						var pointSize = Math.max(2, 3 * zoomScale);
+						g.lineStyle(0);
+						g.beginFill(col, 1);
+						g.drawCircle(sourceX, sourceY, pointSize);
+						g.drawCircle(targetX, targetY, pointSize);
+						g.endFill();
+					}
+				}
+			}
+		}
+	}
 
 	override function postUpdate() {
 		super.postUpdate();
@@ -1176,6 +1255,7 @@ class WorldRender extends dn.Process {
 			invalidatedCameraBasedRenders = false;
 			renderGrids();
 			updateCurrentHighlight();
+			renderWorldViewConnections();
 		}
 	}
 
