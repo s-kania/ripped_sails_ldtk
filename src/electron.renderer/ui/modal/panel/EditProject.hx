@@ -457,14 +457,22 @@ class EditProject extends ui.modal.Panel {
 		i.linkEvent(ProjectSettingsChanged);
 
 		jForms.find("button.generatePaths").click( function(ev) {
-			for(w in project.worlds)
-			for(l in w.levels) {
-				if (untyped l.__pathfindingPaths == null) {
-					untyped l.__pathfindingPaths = {};
-				}
+			// Initialize pathfindingPaths at the project level if it doesn't exist
+			if (project.pathfindingPaths == null) {
+				project.pathfindingPaths = {};
 			}
+			
+			// Remove pathfindingPaths from individual levels if they exist
+			// for(w in project.worlds)
+			// for(l in w.levels) {
+			// 	if (untyped l.__pathfindingPaths != null) {
+			// 		untyped l.__pathfindingPaths = null;
+			// 		l.invalidateJsonCache(); // Ensure the change is saved
+			// 	}
+			// }
+			
 			editor.ge.emit(ProjectSettingsChanged);
-			N.success(L.t._("Pathfinding paths generated for all levels."));
+			N.success(L.t._("Pathfinding paths generated for the project."));
 		});
 
 		// Advanced options
