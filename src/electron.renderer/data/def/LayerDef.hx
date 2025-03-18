@@ -110,7 +110,7 @@ class LayerDef {
 		o.hideFieldsWhenInactive = JsonTools.readBool(json.hideFieldsWhenInactive, true);
 		o.canSelectWhenInactive = JsonTools.readBool(json.canSelectWhenInactive, true);
 		o.renderInWorldView = JsonTools.readBool(json.renderInWorldView, true);
-		o.pathfindingCollisionLayer = untyped json.pathfindingCollisionLayer == true;
+		o.pathfindingCollisionLayer = JsonTools.readBool(untyped json.pathfindingCollisionLayer, false);
 		o.pxOffsetX = JsonTools.readInt(json.pxOffsetX, 0);
 		o.pxOffsetY = JsonTools.readInt(json.pxOffsetY, 0);
 		o.parallaxFactorX = JsonTools.readFloat(json.parallaxFactorX, 0);

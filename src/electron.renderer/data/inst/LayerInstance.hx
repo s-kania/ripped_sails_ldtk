@@ -301,9 +301,6 @@ class LayerInstance {
 				arr;
 			}
 
-		// Add custom field using untyped
-		untyped json.__pathfindingCollisionLayer = def.pathfindingCollisionLayer;
-
 		return json;
 	}
 
@@ -367,9 +364,6 @@ class LayerInstance {
 		li.pxOffsetX = JsonTools.readInt(json.pxOffsetX, 0);
 		li.pxOffsetY = JsonTools.readInt(json.pxOffsetY, 0);
 		li.visible = JsonTools.readBool(json.visible, true);
-
-		// Read pathfindingCollisionLayer using untyped
-		li.def.pathfindingCollisionLayer = untyped json.__pathfindingCollisionLayer == true;
 
 		if( json.intGridCsv==null ) {
 			// Read old pre-CSV format
