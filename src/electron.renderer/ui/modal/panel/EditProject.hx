@@ -459,21 +459,357 @@ class EditProject extends ui.modal.Panel {
 		jForms.find("button.generatePaths").click( function(ev) {
 			// Initialize pathfindingPaths at the project level if it doesn't exist
 			if (project.pathfindingPaths == null) {
-				project.pathfindingPaths = {};
+				project.pathfindingPaths = {
+					levelConnections: []
+				};
+			}
+			
+			// Clear existing level connections
+			if (project.pathfindingPaths.levelConnections != null) {
+				project.pathfindingPaths.levelConnections = [];
+			} else {
+				project.pathfindingPaths.levelConnections = [];
 			}
 			
 			// Remove pathfindingPaths from individual levels if they exist
-			// for(w in project.worlds)
-			// for(l in w.levels) {
-			// 	if (untyped l.__pathfindingPaths != null) {
-			// 		untyped l.__pathfindingPaths = null;
-			// 		l.invalidateJsonCache(); // Ensure the change is saved
-			// 	}
-			// }
+			for(w in project.worlds)
+			for(l in w.levels) {
+				if (untyped l.__pathfindingPaths != null) {
+					untyped l.__pathfindingPaths = null;
+					l.invalidateJsonCache(); // Ensure the change is saved
+				}
+			}
+			
+			// Calculate level connections for each world
+			for (w in project.worlds) {
+				// Create a map of level positions
+				var levelsByPos = new Map<String, data.Level>();
+				for (l in w.levels) {
+					var worldX = l.worldX;
+					var worldY = l.worldY;
+					var key = '$worldX,$worldY';
+					levelsByPos.set(key, l);
+				}
+				
+				// Check connections between levels
+				for (l in w.levels) {
+					var levelX = l.worldX;
+					var levelY = l.worldY;
+					var levelWidth = l.pxWid;
+					var levelHeight = l.pxHei;
+					
+					// Define potential connection points
+					// Format: [dx, dy, connectionName]
+					var potentialConnections:Array<Dynamic> = [
+						// Edges
+						[-1, 0, 'left'],     // Left
+						[1, 0, 'right'],     // Right
+						[0, -1, 'top'],      // Top
+						[0, 1, 'bottom'],    // Bottom
+						
+						// Corners
+						[-1, -1, 'topLeft'],    // Top-left
+						[1, -1, 'topRight'],    // Top-right
+						[-1, 1, 'bottomLeft'],  // Bottom-left
+						[1, 1, 'bottomRight']   // Bottom-right
+					];
+					
+					// Check each potential connection
+					for (conn in potentialConnections) {
+						var dx:Int = untyped conn[0];
+						var dy:Int = untyped conn[1];
+						var connName:String = untyped conn[2];
+						
+						var neighborX = levelX + dx * levelWidth;
+						var neighborY = levelY + dy * levelHeight;
+						var neighborKey = '$neighborX,$neighborY';
+						var neighborLevel = levelsByPos.get(neighborKey);
+						
+						// Handle case when neighbor doesn't exist (ocean - always passable)
+						if (neighborLevel == null) {
+							// Add connection to pathfindingPaths
+							project.pathfindingPaths.levelConnections.push({
+								fromLevelIid: l.iid,
+								toLevelIid: null, // Represents ocean or empty space
+								connectionPoint: connName,
+								isPassable: true
+							});
+							continue;
+						}
+						
+						// Check if there's a valid connection between the two levels
+						var isPassable = untyped checkConnectionBetweenLevels(l, neighborLevel, connName);
+						
+						// Add connection to pathfindingPaths
+						project.pathfindingPaths.levelConnections.push({
+							fromLevelIid: l.iid,
+							toLevelIid: neighborLevel.iid,
+							connectionPoint: connName,
+							isPassable: isPassable
+						});
+					}
+				}
+			}
 			
 			editor.ge.emit(ProjectSettingsChanged);
-			N.success(L.t._("Pathfinding paths generated for the project."));
+			N.success(L.t._('Pathfinding level connections generated successfully.'));
 		});
+
+		// Helper function to check if a pair of cells allows passage
+		function checkCellPairPassability(layers1:Array<data.inst.LayerInstance>, layers2:Array<data.inst.LayerInstance>, 
+										cx1:Int, cy1:Int, cx2:Int, cy2:Int) : Bool {
+			// Check if both cells are passable in their respective collision layers
+			var isCell1Passable = true;
+			var isCell2Passable = true;
+			
+			// Check all collision layers in level 1
+			for (layer in layers1) {
+				// For IntGrid layers, check for collision values
+				if (layer.def.type == ldtk.Json.LayerType.IntGrid) {
+					// Assuming value > 0 means collision
+					var value = layer.getIntGrid(cx1, cy1);
+					if (value > 0) {
+						isCell1Passable = false;
+						break;
+					}
+				}
+				// For other layer types, add specific checks if needed
+			}
+			
+			// Check all collision layers in level 2
+			for (layer in layers2) {
+				// For IntGrid layers, check for collision values
+				if (layer.def.type == ldtk.Json.LayerType.IntGrid) {
+					// Assuming value > 0 means collision
+					var value = layer.getIntGrid(cx2, cy2);
+					if (value > 0) {
+						isCell2Passable = false;
+						break;
+					}
+				}
+				// For other layer types, add specific checks if needed
+			}
+			
+			// If both cells are passable, then there's a valid connection
+			return isCell1Passable && isCell2Passable;
+		}
+		
+		// Helper function to check if there's a valid connection between two levels
+		function checkConnectionBetweenLevels(level1:data.Level, level2:data.Level, connectionPoint:String) : Bool {
+			// Get collision layers of both levels
+			var collisionLayers1 = level1.layerInstances.filter(li -> li.def.pathfindingCollisionLayer);
+			var collisionLayers2 = level2.layerInstances.filter(li -> li.def.pathfindingCollisionLayer);
+			
+			// If either level has no collision layers, assume passage is possible
+			if (collisionLayers1.length == 0 || collisionLayers2.length == 0) {
+				return true;
+			}
+			
+			// Check tiles at the border based on connection point
+			switch (connectionPoint) {
+				case 'left': 
+					// Check right edge of level1 against left edge of level2
+					return untyped checkEdgeConnection(level1, level2, collisionLayers1, collisionLayers2, 'right', 'left');
+					
+				case 'right':
+					// Check left edge of level1 against right edge of level2
+					return untyped checkEdgeConnection(level1, level2, collisionLayers1, collisionLayers2, 'left', 'right');
+					
+				case 'top':
+					// Check bottom edge of level1 against top edge of level2
+					return untyped checkEdgeConnection(level1, level2, collisionLayers1, collisionLayers2, 'bottom', 'top');
+					
+				case 'bottom':
+					// Check top edge of level1 against bottom edge of level2
+					return untyped checkEdgeConnection(level1, level2, collisionLayers1, collisionLayers2, 'top', 'bottom');
+					
+				case 'topLeft':
+					// Check top-left corner
+					return untyped checkCornerConnection(level1, level2, collisionLayers1, collisionLayers2, 'topRight', 'bottomLeft');
+					
+				case 'topRight':
+					// Check top-right corner
+					return untyped checkCornerConnection(level1, level2, collisionLayers1, collisionLayers2, 'topLeft', 'bottomRight');
+					
+				case 'bottomLeft':
+					// Check bottom-left corner
+					return untyped checkCornerConnection(level1, level2, collisionLayers1, collisionLayers2, 'bottomRight', 'topLeft');
+					
+				case 'bottomRight':
+					// Check bottom-right corner
+					return untyped checkCornerConnection(level1, level2, collisionLayers1, collisionLayers2, 'bottomLeft', 'topRight');
+					
+				default:
+					return false;
+			}
+		}
+		
+		// Helper function to check connections at edges
+		function checkEdgeConnection(level1:data.Level, level2:data.Level, 
+									layers1:Array<data.inst.LayerInstance>, layers2:Array<data.inst.LayerInstance>, 
+                                  edge1:String, edge2:String) : Bool {
+			var gridSize = project.defaultGridSize;
+			var isPassable = false;
+			
+			// Get the coordinates to check for each edge
+			var cellsToCheck1 = [];
+			var cellsToCheck2 = [];
+			
+			// Helper to calculate grid width and height for a level
+			function getCWid(level:data.Level) return dn.M.ceil(level.pxWid / gridSize);
+			function getCHei(level:data.Level) return dn.M.ceil(level.pxHei / gridSize);
+			
+			switch (edge1) {
+				case 'right':
+					// Right edge of level1
+					var cx = getCWid(level1) - 1;
+					for (cy in 0...getCHei(level1)) {
+						cellsToCheck1.push({cx: cx, cy: cy});
+					}
+					
+				case 'left':
+					// Left edge of level1
+					var cx = 0;
+					for (cy in 0...getCHei(level1)) {
+						cellsToCheck1.push({cx: cx, cy: cy});
+					}
+					
+				case 'bottom':
+					// Bottom edge of level1
+					var cy = getCHei(level1) - 1;
+					for (cx in 0...getCWid(level1)) {
+						cellsToCheck1.push({cx: cx, cy: cy});
+					}
+					
+				case 'top':
+					// Top edge of level1
+					var cy = 0;
+					for (cx in 0...getCWid(level1)) {
+						cellsToCheck1.push({cx: cx, cy: cy});
+					}
+			}
+			
+			switch (edge2) {
+				case 'right':
+					// Right edge of level2
+					var cx = getCWid(level2) - 1;
+					for (cy in 0...getCHei(level2)) {
+						cellsToCheck2.push({cx: cx, cy: cy});
+					}
+					
+				case 'left':
+					// Left edge of level2
+					var cx = 0;
+					for (cy in 0...getCHei(level2)) {
+						cellsToCheck2.push({cx: cx, cy: cy});
+					}
+					
+				case 'bottom':
+					// Bottom edge of level2
+					var cy = getCHei(level2) - 1;
+					for (cx in 0...getCWid(level2)) {
+						cellsToCheck2.push({cx: cx, cy: cy});
+					}
+					
+				case 'top':
+					// Top edge of level2
+					var cy = 0;
+					for (cx in 0...getCWid(level2)) {
+						cellsToCheck2.push({cx: cx, cy: cy});
+					}
+			}
+			
+			// Find corresponding cells between the two edges
+			var correspondingCells = [];
+			
+			// Match cells based on their position along the edge
+			if ((edge1 == 'left' || edge1 == 'right') && (edge2 == 'left' || edge2 == 'right')) {
+				// Vertical edges - match by Y coordinate
+				var cells1ByY = new Map<Int, {cx:Int, cy:Int}>();
+				for (cell in cellsToCheck1) {
+					cells1ByY.set(cell.cy, cell);
+				}
+				
+				for (cell2 in cellsToCheck2) {
+					if (cells1ByY.exists(cell2.cy)) {
+						var cell1 = cells1ByY.get(cell2.cy);
+						correspondingCells.push({cell1: cell1, cell2: cell2});
+					}
+				}
+			} else if ((edge1 == 'top' || edge1 == 'bottom') && (edge2 == 'top' || edge2 == 'bottom')) {
+				// Horizontal edges - match by X coordinate
+				var cells1ByX = new Map<Int, {cx:Int, cy:Int}>();
+				for (cell in cellsToCheck1) {
+					cells1ByX.set(cell.cx, cell);
+				}
+				
+				for (cell2 in cellsToCheck2) {
+					if (cells1ByX.exists(cell2.cx)) {
+						var cell1 = cells1ByX.get(cell2.cx);
+						correspondingCells.push({cell1: cell1, cell2: cell2});
+					}
+				}
+			}
+			
+			// Check each pair of corresponding cells
+			for (pair in correspondingCells) {
+				var isThisCellPairPassable = untyped checkCellPairPassability(
+					layers1, layers2, pair.cell1.cx, pair.cell1.cy, pair.cell2.cx, pair.cell2.cy);
+				
+				if (isThisCellPairPassable) {
+					isPassable = true;
+					break; // At least one passable connection is enough
+				}
+			}
+			
+			return isPassable;
+		}
+		
+		// Helper function to check connections at corners
+		function checkCornerConnection(level1:data.Level, level2:data.Level, 
+									layers1:Array<data.inst.LayerInstance>, layers2:Array<data.inst.LayerInstance>, 
+                                    corner1:String, corner2:String) : Bool {
+			var cell1 = {cx: 0, cy: 0};
+			var cell2 = {cx: 0, cy: 0};
+			
+			// Helper to calculate grid width and height for a level
+			var gridSize = project.defaultGridSize;
+			function getCWid(level:data.Level) return dn.M.ceil(level.pxWid / gridSize);
+			function getCHei(level:data.Level) return dn.M.ceil(level.pxHei / gridSize);
+			
+			// Determine corner coordinates for level1
+			switch (corner1) {
+				case 'topLeft':
+					cell1 = {cx: 0, cy: 0};
+					
+				case 'topRight':
+					cell1 = {cx: getCWid(level1) - 1, cy: 0};
+					
+				case 'bottomLeft':
+					cell1 = {cx: 0, cy: getCHei(level1) - 1};
+					
+				case 'bottomRight':
+					cell1 = {cx: getCWid(level1) - 1, cy: getCHei(level1) - 1};
+			}
+			
+			// Determine corner coordinates for level2
+			switch (corner2) {
+				case 'topLeft':
+					cell2 = {cx: 0, cy: 0};
+					
+				case 'topRight':
+					cell2 = {cx: getCWid(level2) - 1, cy: 0};
+					
+				case 'bottomLeft':
+					cell2 = {cx: 0, cy: getCHei(level2) - 1};
+					
+				case 'bottomRight':
+					cell2 = {cx: getCWid(level2) - 1, cy: getCHei(level2) - 1};
+			}
+			
+			// Check if there's a passable connection between these corner cells
+			return untyped checkCellPairPassability(layers1, layers2, cell1.cx, cell1.cy, cell2.cx, cell2.cy);
+		}
 
 		// Advanced options
 		var jAdvanceds = jForms.filter(".advanced");
