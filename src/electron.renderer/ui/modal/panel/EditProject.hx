@@ -471,6 +471,11 @@ class EditProject extends ui.modal.Panel {
 				project.pathfindingPaths.levelConnections = [];
 			}
 			
+			// Update collision layers for pathfinding in all levels first
+			for(w in project.worlds)
+			for(l in w.levels)
+				l.generateCombinedCollisionLayer();
+			
 			// Remove pathfindingPaths from individual levels if they exist
 			for(w in project.worlds)
 			for(l in w.levels) {

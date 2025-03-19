@@ -17,6 +17,9 @@ class Level {
 	public var pxHei : Int;
 	public var layerInstances : Array<data.inst.LayerInstance> = [];
 	public var fieldInstances : Map<Int, data.inst.FieldInstance> = new Map();
+	
+	// Combined collision layer for pathfinding
+	public var collisionLayer : Array<Array<Int>> = null; // Tablica 2D z wartouy015bciami 0 (przejuy015bcie) i 1 (blokada)
 
 	public var externalRelPath: Null<String>;
 
@@ -175,7 +178,7 @@ class Level {
 			__bgColor: JsonTools.writeColor( getBgColor() ),
 			bgColor: JsonTools.writeColor(bgColor, true),
 			useAutoIdentifier: useAutoIdentifier,
-
+            
 			bgRelPath: bgRelPath,
 			bgPos: JsonTools.writeEnum(bgPos, true),
 			bgPivotX: JsonTools.writeFloat(bgPivotX),
@@ -207,6 +210,9 @@ class Level {
 			layerInstances: layerInstances.map( li->li.toJson() ),
 			__neighbours: ignoreCache ? [] : getNeighboursJson(),
 		}
+
+		// Dodaj warstwę kolizji jako dynamiczne pole
+		Reflect.setField(json, "collisionLayer", generateCombinedCollisionLayer());
 
 		// Cache this json
 		if( !ignoreCache )
@@ -322,6 +328,19 @@ class Level {
 				var fi = data.inst.FieldInstance.fromJson(p,fieldJson);
 				l.fieldInstances.set(fi.defUid, fi);
 			}
+
+		// Wczytywanie warstwy kolizji (jeśli istnieje)
+		if (Reflect.hasField(json, "collisionLayer")) {
+			var jsonCollLayer:Array<Array<Int>> = cast Reflect.field(json, "collisionLayer");
+			l.collisionLayer = [];
+			for (i in 0...jsonCollLayer.length) {
+				var row = jsonCollLayer[i];
+				l.collisionLayer.push(row);
+			}
+		} else {
+			// Generuj collision layer jeśli nie ma go w JSON
+			l.collisionLayer = l.generateCombinedCollisionLayer();
+		}
 
 		// Init cache
 		crawlObjectRec(json); // Because haxe.Json.parse unescapes "\n" chars, we need to re-escape them before caching the JSON object
@@ -624,7 +643,7 @@ class Level {
 		var i = 0;
 		while( i<layerInstances.length )
 			if( layerInstances[i].def==null ) {
-				App.LOG.add("tidy", 'Removed lost layer instance in $this');
+				untyped __js__("console.log('Removed lost layer instance in $this')");
 				layerInstances.splice(i,1);
 				invalidateJsonCache();
 			}
@@ -634,7 +653,7 @@ class Level {
 		// Create missing layerInstances & check if they're sorted in the same order as defs
 		for(i in 0..._project.defs.layers.length)
 			if( i>=layerInstances.length || layerInstances[i].layerDefUid!=_project.defs.layers[i].uid ) {
-				App.LOG.add("tidy", 'Fixed layer instance array in $this (order mismatch or missing layer instance)');
+				untyped __js__("console.log('Fixed layer instance array in $this (order mismatch or missing layer instance)')");
 				var existing = new Map();
 				for(li in layerInstances)
 					existing.set(li.layerDefUid, li);
@@ -643,7 +662,7 @@ class Level {
 					if( existing.exists(ld.uid) )
 						layerInstances.push( existing.get(ld.uid) );
 					else {
-						App.LOG.add("tidy", 'Added missing layer instance ${ld.identifier} in $this');
+						untyped __js__("console.log('Added missing layer instance ${ld.identifier} in $this')");
 						createLayerInstance(ld);
 					}
 				invalidateJsonCache();
@@ -659,7 +678,7 @@ class Level {
 		// Remove field instances whose def was removed
 		for(e in fieldInstances.keyValueIterator())
 			if( e.value.def==null ) {
-				App.LOG.add("tidy", 'Removed lost fieldInstance in $this');
+				untyped __js__("console.log('Removed lost fieldInstance in $this')");
 				fieldInstances.remove(e.key);
 				invalidateJsonCache();
 			}
@@ -690,7 +709,7 @@ class Level {
 			while( i<li.entityInstances.length ) {
 				ei = li.entityInstances[i];
 				if( !ei.def.allowOutOfBounds && !inBounds(ei.x, ei.y) ) {
-					App.LOG.general('Removed out-of-bounds entity ${ei.def.identifier} in $li');
+					untyped __js__("console.log('Removed out-of-bounds entity ${ei.def.identifier} in $li')");
 					li.entityInstances.splice(i,1);
 					n++;
 				}
@@ -699,7 +718,7 @@ class Level {
 			}
 		}
 		if( n>0 )
-			N.warning( L.t._("::n:: entity(ies) deleted during resizing!", { n:n }) );
+			untyped __js__("console.log('::n:: entity(ies) deleted during resizing!', { n:n })");
 
 		_project.tidy();
 	}
@@ -838,5 +857,60 @@ class Level {
 			eachLayer( getLayerInstance(_project.defs.layers[i]) );
 			i++;
 		}
+	}
+
+	/** Generate a combined collision layer for pathfinding **/
+	public function generateCombinedCollisionLayer() {
+		// Clear existing collision layer
+		this.collisionLayer = [];
+		
+		// Get grid size for coordId calculation
+		var gridSize = _project.defaultGridSize;
+		var cWid = M.ceil(pxWid / gridSize);
+		var cHei = M.ceil(pxHei / gridSize);
+		
+		// Inicjalizacja pustej tablicy 2D
+		for (y in 0...cHei) {
+			var row = [];
+			for (x in 0...cWid) {
+				row.push(0); // Domyuy015blnie wszystko jest przejezdne (0)
+			}
+			this.collisionLayer.push(row);
+		}
+		
+		// Iterate through all layers to find collision layers
+		for (li in layerInstances) {
+			// Pathfinding collision layers are expected to be IntGrid layers
+			if (li.def.type != IntGrid || !li.def.pathfindingCollisionLayer) {
+				continue;
+			}
+			
+			// Iterate through all cells in the layer
+			for (cy in 0...li.cHei) {
+				for (cx in 0...li.cWid) {
+					// Use public methods instead of accessing intGrid directly
+					var value = li.getIntGrid(cx, cy);
+					if (value > 0) { // Only add collision values (non-zero)
+						// Upewnij siu0119 uy017ce indeksy su0105 w dozwolonym zakresie
+						if (cy < cHei && cx < cWid) {
+							this.collisionLayer[cy][cx] = 1; // 1 oznacza blokadu0119
+						}
+					}
+				}
+			}
+		}
+		
+		// Dodajmy logi w formie console.log/console.table, kou0142re buy0119dy0105 widoczne w konsoli Electron
+		untyped __js__("console.log('Generated collision layer for %s with size %dx%d', {0}, {1}, {2})", this.identifier, cWid, cHei);
+		
+		// Wyuy015bwietl fragment tablicy kolizji
+		untyped __js__("console.log('Collision layer sample:')");
+		var sampleSize = Std.int(Math.min(5, this.collisionLayer.length));
+		for (i in 0...sampleSize) {
+			var rowSample = this.collisionLayer[i].slice(0, Std.int(Math.min(10, this.collisionLayer[i].length)));
+			untyped __js__("console.log({0})", rowSample);
+		}
+		
+		return this.collisionLayer;
 	}
 }

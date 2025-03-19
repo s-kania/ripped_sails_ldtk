@@ -1109,9 +1109,9 @@ class WorldRender extends dn.Process {
 		wl.identifier.color.setColor( l.getSmartColor(false).toBlack(0.3).withAlpha(l.useAutoIdentifier ? 0.4 : 1) );
 	}
 
-	/** Render all entity connections in world view mode **/
+	/** Render all level connections in world view mode **/
 	function renderWorldViewConnections() {
-		if (!editor.worldMode) {
+		if (!editor.worldMode || !project.showPathfindingPaths) {
 			connectionsWrapper.visible = false;
 			return;
 		}
@@ -1130,111 +1130,192 @@ class WorldRender extends dn.Process {
 		var lineThickness = Math.max(1, 2 * zoomScale);
 		var pointSize = Math.max(2, 3 * zoomScale);
 		
-		// Collection of unique entities to render as circles
-		var entitiesToRender = new Map<String, {ei:data.inst.EntityInstance, x:Float, y:Float}>();
+		// Exit if no pathfinding data exists
+		if (project.pathfindingPaths == null || project.pathfindingPaths.levelConnections == null) {
+			return;
+		}
 		
-		// Process all levels in the current world
+		// Get all levels by IID for quick lookup
+		var levelsById = new Map<String, data.Level>();
 		for (l in curWorld.levels) {
-			// Skip if not on the current world depth
-			if (l.worldDepth != editor.curWorldDepth)
-				continue;
-			
-			// Process each layer instance
-			for (li in l.layerInstances) {
-				// Only render connections for the pathfinding layer
-				if (li.def.type != Entities || li.def.identifier != "pathfinding")
-					continue;
-				
-				// Process each entity
-				for (ei in li.entityInstances) {
-					// Save this entity for later rendering
-					var worldX = ei.worldX + ei._li.pxTotalOffsetX;
-					var worldY = ei.worldY + ei._li.pxTotalOffsetY;
-					entitiesToRender.set(ei.iid + "", {ei: ei, x: worldX, y: worldY});
-					
-					// Find entity instances referring to this entity
-					for (refEi in project.getEntityInstancesReferingTo(ei)) {
-						// Skip if not in pathfinding layer
-						if (refEi._li.def.identifier != "pathfinding")
-							continue;
-						
-						// Get the field instance that creates this reference
-						var fi = refEi.getEntityRefFieldTo(ei, true);
-						if (fi == null || !fi.def.refLinkIsDisplayed())
-							continue;
-						
-						// Save this entity for later rendering
-						var refWorldX = refEi.worldX + refEi._li.pxTotalOffsetX;
-						var refWorldY = refEi.worldY + refEi._li.pxTotalOffsetY;
-						entitiesToRender.set(refEi.iid + "", {ei: refEi, x: refWorldX, y: refWorldY});
-						
-						// Get reference endpoints
-						var col = refEi.getSmartColor(false);
-						
-						// Calculate world coordinates
-						var sourceX = refEi.worldX + refEi.getRefAttachX(fi.def) - refEi.x + refEi._li.pxTotalOffsetX;
-						var sourceY = refEi.worldY + refEi.getRefAttachY(fi.def) - refEi.y + refEi._li.pxTotalOffsetY;
-						var targetX = ei.worldX + ei.getRefAttachX(fi.def) - ei.x + ei._li.pxTotalOffsetX;
-						var targetY = ei.worldY + ei.getRefAttachY(fi.def) - ei.y + ei._li.pxTotalOffsetY;
-						
-						// Draw the connection line
-						g.lineStyle(lineThickness, col, 1);
-						g.moveTo(sourceX, sourceY);
-						g.lineTo(targetX, targetY);
-						
-						// Draw connection points for better visibility
-						g.lineStyle(0);
-						g.beginFill(col, 1);
-						g.drawCircle(sourceX, sourceY, pointSize);
-						g.drawCircle(targetX, targetY, pointSize);
-						g.endFill();
-					}
-				}
+			if (l.worldDepth == editor.curWorldDepth) {
+				levelsById.set(l.iid, l);
 			}
 		}
 		
-		// Render all entities as circles or icons
-		for (info in entitiesToRender) {
-			var ei = info.ei;
-			var worldX = info.x;
-			var worldY = info.y;
-			var col = ei.getSmartColor(false);
+		// Process all level connections from pathfindingPaths
+		var connections:Array<Dynamic> = project.pathfindingPaths.levelConnections;
+		for (conn in connections) {
+			// Skip connections that aren't passable
+			if (!conn.isPassable) {
+				continue;
+			}
 			
-			// Try to get entity tile first
-			var smartTile = ei.getSmartTile();
-			if (smartTile != null) {
-				// Render entity tile if available
-				var td = editor.project.defs.getTilesetDef(smartTile.tilesetUid);
-				if (td != null && td.isAtlasLoaded()) {
-					try {
-						var t = td.getTileRect(smartTile);
-						if (t != null) {
-							var iconSize = Math.max(10, 15 * zoomScale);
-							var bmp = new h2d.Bitmap(t, connectionsWrapper);
-							bmp.setPosition(worldX - iconSize/2, worldY - iconSize/2);
-							var scale = iconSize / Math.max(t.width, t.height);
-							bmp.setScale(scale);
-							bmp.alpha = 0.9;
-						}
-					} catch (e:Dynamic) {
-						// Fall back to circle if tile rendering fails
-						g.lineStyle(lineThickness * 0.5, C.toWhite(col, 0.3), 1);
-						g.beginFill(col, 0.7);
-						g.drawCircle(worldX, worldY, Math.max(4, 6 * zoomScale));
-						g.endFill();
-					}
-				} else {
-					// Fall back to circle if tileset isn't loaded
-					g.lineStyle(lineThickness * 0.5, C.toWhite(col, 0.3), 1);
-					g.beginFill(col, 0.7);
-					g.drawCircle(worldX, worldY, Math.max(4, 6 * zoomScale));
-					g.endFill();
+			// Get the levels involved in the connection
+			var fromLevel = levelsById.get(conn.fromLevelIid);
+			
+			// Skip if from-level is not on current depth or not found
+			if (fromLevel == null) {
+				continue;
+			}
+			
+			// For connections to null (ocean/empty), only show if enabled
+			if (conn.toLevelIid == null) {
+				// Handle connections to ocean/edge
+				var sourceX = 0.0;
+				var sourceY = 0.0;
+				var targetX = 0.0;
+				var targetY = 0.0;
+				
+				// Calculate center point of from-level
+				var centerX = fromLevel.worldX + fromLevel.pxWid * 0.5;
+				var centerY = fromLevel.worldY + fromLevel.pxHei * 0.5;
+				
+				// Determine connection points based on connection type
+				switch (conn.connectionPoint) {
+					case 'left':
+						sourceX = fromLevel.worldX;
+						sourceY = centerY;
+						targetX = sourceX - fromLevel.pxWid * 0.3; // Short line to the left
+						targetY = sourceY;
+						
+					case 'right':
+						sourceX = fromLevel.worldX + fromLevel.pxWid;
+						sourceY = centerY;
+						targetX = sourceX + fromLevel.pxWid * 0.3; // Short line to the right
+						targetY = sourceY;
+						
+					case 'top':
+						sourceX = centerX;
+						sourceY = fromLevel.worldY;
+						targetX = sourceX;
+						targetY = sourceY - fromLevel.pxHei * 0.3; // Short line upward
+						
+					case 'bottom':
+						sourceX = centerX;
+						sourceY = fromLevel.worldY + fromLevel.pxHei;
+						targetX = sourceX;
+						targetY = sourceY + fromLevel.pxHei * 0.3; // Short line downward
+						
+					case 'topLeft':
+						sourceX = fromLevel.worldX;
+						sourceY = fromLevel.worldY;
+						targetX = sourceX - fromLevel.pxWid * 0.2;
+						targetY = sourceY - fromLevel.pxHei * 0.2;
+						
+					case 'topRight':
+						sourceX = fromLevel.worldX + fromLevel.pxWid;
+						sourceY = fromLevel.worldY;
+						targetX = sourceX + fromLevel.pxWid * 0.2;
+						targetY = sourceY - fromLevel.pxHei * 0.2;
+						
+					case 'bottomLeft':
+						sourceX = fromLevel.worldX;
+						sourceY = fromLevel.worldY + fromLevel.pxHei;
+						targetX = sourceX - fromLevel.pxWid * 0.2;
+						targetY = sourceY + fromLevel.pxHei * 0.2;
+						
+					case 'bottomRight':
+						sourceX = fromLevel.worldX + fromLevel.pxWid;
+						sourceY = fromLevel.worldY + fromLevel.pxHei;
+						targetX = sourceX + fromLevel.pxWid * 0.2;
+						targetY = sourceY + fromLevel.pxHei * 0.2;
 				}
-			} else {
-				// Default: render as circle with entity color
-				g.lineStyle(lineThickness * 0.5, C.toWhite(col, 0.3), 1);
-				g.beginFill(col, 0.7);
-				g.drawCircle(worldX, worldY, Math.max(4, 6 * zoomScale));
+				
+				// Draw the connection to ocean/edge with a semi-transparent line
+				g.lineStyle(lineThickness, 0x0099ff, 0.5);
+				g.moveTo(sourceX, sourceY);
+				g.lineTo(targetX, targetY);
+				
+				// Draw connection points
+				g.lineStyle(0);
+				g.beginFill(0x0099ff, 0.7);
+				g.drawCircle(sourceX, sourceY, pointSize);
+				g.drawCircle(targetX, targetY, pointSize);
+				g.endFill();
+			}
+			else {
+				// Get the target level
+				var toLevel = levelsById.get(conn.toLevelIid);
+				
+				// Skip if target level is not on current depth or not found
+				if (toLevel == null) {
+					continue;
+				}
+				
+				// Calculate connection points between levels
+				var sourceX = 0.0;
+				var sourceY = 0.0;
+				var targetX = 0.0;
+				var targetY = 0.0;
+				
+				// Calculate centers of levels
+				var fromCenterX = fromLevel.worldX + fromLevel.pxWid * 0.5;
+				var fromCenterY = fromLevel.worldY + fromLevel.pxHei * 0.5;
+				var toCenterX = toLevel.worldX + toLevel.pxWid * 0.5;
+				var toCenterY = toLevel.worldY + toLevel.pxHei * 0.5;
+				
+				// Determine connection points based on connection type
+				switch (conn.connectionPoint) {
+					case 'left':
+						sourceX = fromLevel.worldX;
+						sourceY = fromCenterY;
+						targetX = toLevel.worldX + toLevel.pxWid;
+						targetY = toCenterY;
+						
+					case 'right':
+						sourceX = fromLevel.worldX + fromLevel.pxWid;
+						sourceY = fromCenterY;
+						targetX = toLevel.worldX;
+						targetY = toCenterY;
+						
+					case 'top':
+						sourceX = fromCenterX;
+						sourceY = fromLevel.worldY;
+						targetX = toCenterX;
+						targetY = toLevel.worldY + toLevel.pxHei;
+						
+					case 'bottom':
+						sourceX = fromCenterX;
+						sourceY = fromLevel.worldY + fromLevel.pxHei;
+						targetX = toCenterX;
+						targetY = toLevel.worldY;
+						
+					case 'topLeft':
+						sourceX = fromLevel.worldX;
+						sourceY = fromLevel.worldY;
+						targetX = toLevel.worldX + toLevel.pxWid;
+						targetY = toLevel.worldY + toLevel.pxHei;
+						
+					case 'topRight':
+						sourceX = fromLevel.worldX + fromLevel.pxWid;
+						sourceY = fromLevel.worldY;
+						targetX = toLevel.worldX;
+						targetY = toLevel.worldY + toLevel.pxHei;
+						
+					case 'bottomLeft':
+						sourceX = fromLevel.worldX;
+						sourceY = fromLevel.worldY + fromLevel.pxHei;
+						targetX = toLevel.worldX + toLevel.pxWid;
+						targetY = toLevel.worldY;
+						
+					case 'bottomRight':
+						sourceX = fromLevel.worldX + fromLevel.pxWid;
+						sourceY = fromLevel.worldY + fromLevel.pxHei;
+						targetX = toLevel.worldX;
+						targetY = toLevel.worldY;
+				}
+				
+				// Draw the connection line between levels
+				g.lineStyle(lineThickness, 0x00cc33, 0.8);
+				g.moveTo(sourceX, sourceY);
+				g.lineTo(targetX, targetY);
+				
+				// Draw connection points
+				g.lineStyle(0);
+				g.beginFill(0x00cc33, 1);
+				g.drawCircle(sourceX, sourceY, pointSize);
+				g.drawCircle(targetX, targetY, pointSize);
 				g.endFill();
 			}
 		}

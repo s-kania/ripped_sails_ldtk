@@ -348,7 +348,22 @@ class EditLayerDefs extends ui.modal.Panel {
 		i.onChange = editor.ge.emit.bind(LayerDefChanged(cur.uid, false));
 
 		var i = Input.linkToHtmlInput( cur.pathfindingCollisionLayer, jForms.find("input[name='pathfindingCollisionLayer']") );
-		i.onChange = editor.ge.emit.bind(LayerDefChanged(cur.uid, false));
+		i.onChange = function() {
+			// Emit the layer def changed event
+			editor.ge.emit(LayerDefChanged(cur.uid, false));
+			
+			// Update collision layers for all levels in the project
+			for (world in editor.project.worlds) {
+				for (level in world.levels) {
+					// Generate/update the collision layer for this level
+					level.generateCombinedCollisionLayer();
+					level.invalidateJsonCache();
+				}
+			}
+			
+			// Notify about the update
+			N.success('Updated collision layers for all levels');
+		};
 
 		// UI tags
 		var ted = new TagEditor(
