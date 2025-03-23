@@ -686,83 +686,6 @@ class WorldRender extends dn.Process {
 	}
 
 
-	function updateLevelVisibility(l:data.Level) {
-		var wl = getWorldLevel(l);
-
-		wl.bgWrapper.alpha = editor.worldMode ? 1 : 0.2;
-
-		if( l.uid==editor.curLevelId && !editor.worldMode ) {
-			// Hide current level in editor mode
-			wl.outline.visible = false;
-			wl.fadeMask.visible = false;
-			wl.render.visible = false;
-		}
-		else if( editor.worldMode ) {
-			// Show everything in world mode
-			wl.bgWrapper.visible = wl.render.visible = wl.outline.visible = camera.isOnScreenLevel(l);
-			wl.fadeMask.visible = false;
-			wl.outline.alpha = 1;
-		}
-		else {
-			// Fade other levels in editor mode
-			var dist = editor.curLevel.getBoundsDist(l);
-			wl.outline.alpha = 0.3;
-			wl.outline.visible = camera.isOnScreenLevel(l);
-			wl.fadeMask.visible = true;
-			wl.render.visible = wl.outline.visible && dist<=300;
-		}
-
-		// Depths
-		if( l.worldDepth!=editor.curWorldDepth ) {
-			if( l.worldDepth<editor.curWorldDepth ) {
-				// Above
-				wl.outline.alpha*=0.45;
-				wl.bgWrapper.visible = false;
-				wl.render.visible = false;
-				wl.fadeMask.visible = false;
-				if( M.fabs(l.worldDepth-editor.curWorldDepth)>=2 )
-					wl.outline.alpha*=0.3;
-			}
-			else {
-				// Beneath
-				wl.bgWrapper.alpha*=0.6;
-				wl.render.alpha*=0.15;
-				wl.outline.alpha*=0.2;
-				if( M.fabs(l.worldDepth-editor.curWorldDepth)>=2 )
-					wl.bgWrapper.alpha*=0.3;
-			}
-		}
-		else {
-			// Same world depth
-			wl.render.alpha = 1;
-		}
-	}
-
-	public function updateLayout() {
-		var cur = editor.curLevel;
-
-		// Level layout
-		for( l in editor.curWorld.levels ) {
-			if( !worldLevels.exists(l.uid) )
-				continue;
-
-			var wl = getWorldLevel(l);
-			updateLevelVisibility(l);
-
-			// Position
-			wl.render.setPosition( l.worldX, l.worldY );
-			wl.outline.setPosition( l.worldX, l.worldY );
-			wl.bgWrapper.setPosition( l.worldX, l.worldY );
-			wl.fadeMask.setPosition( l.worldX, l.worldY );
-			wl.fadeMask.scaleX = l.pxWid;
-			wl.fadeMask.scaleY = l.pxHei;
-		}
-
-		updateAllLevelIdentifiers(false);
-		updateFieldsPos();
-	}
-
-
 	function removeWorldLevel(uid:Int) {
 		if( worldLevels.exists(uid) ) {
 			var wl = worldLevels.get(uid);
@@ -1128,195 +1051,102 @@ class WorldRender extends dn.Process {
 		// Calculate appropriate line thickness based on zoom level
 		var zoomScale = 1 / camera.adjustedZoom;
 		var lineThickness = Math.max(1, 2 * zoomScale);
-		var pointSize = Math.max(2, 3 * zoomScale);
 		
-		// Exit if no pathfinding data exists
-		if (project.pathfindingPaths == null || project.pathfindingPaths.levelConnections == null) {
+		// Sprawdzamy czy istnieje struktura pathfindingPaths i jej wu0119zu0142y
+		if (project.pathfindingPaths == null || project.pathfindingPaths.nodes == null || project.pathfindingPaths.nodes.length == 0) {
 			return;
 		}
 		
-		// Get all levels by IID for quick lookup
-		var levelsById = new Map<String, data.Level>();
-		for (l in curWorld.levels) {
-			if (l.worldDepth == editor.curWorldDepth) {
-				levelsById.set(l.iid, l);
+		// 1. Znajdu017a rozmiar poziomu na podstawie poziomu "0_0" lub pierwszego dostu0119pnego
+		var levelWidth = 0;
+		var levelHeight = 0;
+		var worldOffsetX = 0;
+		var worldOffsetY = 0;
+		var refLevel = null;
+		
+		for (w in project.worlds) {
+			for (l in w.levels) {
+				var regex = ~/([0-9]+)_([0-9]+)/g;
+				if (regex.match(l.identifier)) {
+					var xCoord = Std.parseInt(regex.matched(1));
+					var yCoord = Std.parseInt(regex.matched(2));
+					
+					if (xCoord == 0 && yCoord == 0) {
+						// Znaleziono poziom "0_0"
+						levelWidth = l.pxWid;
+						levelHeight = l.pxHei;
+						worldOffsetX = l.worldX;
+						worldOffsetY = l.worldY;
+						refLevel = l;
+						break;
+					} else if (refLevel == null) {
+						// Zapisz jako potencjalny poziom odniesienia, jeu015bli nie znaleziono "0_0"
+						refLevel = l;
+					}
+				}
+			}
+			if (refLevel != null && levelWidth > 0) break;
+		}
+		
+		// Jeu015bli znaleziono tylko inny poziom niu017c "0_0", uu017cyj go jako odniesienie
+		if (refLevel != null && levelWidth == 0) {
+			levelWidth = refLevel.pxWid;
+			levelHeight = refLevel.pxHei;
+			// Oblicz offset na podstawie koordynatu00f3w
+			var regex = ~/([0-9]+)_([0-9]+)/g;
+			if (regex.match(refLevel.identifier)) {
+				var xCoord = Std.parseInt(regex.matched(1));
+				var yCoord = Std.parseInt(regex.matched(2));
+				worldOffsetX = refLevel.worldX - (xCoord * levelWidth);
+				worldOffsetY = refLevel.worldY - (yCoord * levelHeight);
+			} else {
+				worldOffsetX = refLevel.worldX;
+				worldOffsetY = refLevel.worldY;
 			}
 		}
 		
-		// Process all level connections from pathfindingPaths
-		var connections:Array<Dynamic> = project.pathfindingPaths.levelConnections;
-		for (conn in connections) {
-			// Skip connections that aren't passable
-			if (!conn.isPassable) {
-				continue;
-			}
+		if (levelWidth == 0) return; // Nie znaleziono u017cadnego poziomu
+		
+		// 2. Utworzenie funkcji do obliczania pozycji na podstawie koordynatu00f3w
+		function getPositionFromCoords(x:Int, y:Int) {
+			return {
+				x: worldOffsetX + (x * levelWidth) + (levelWidth/2),
+				y: worldOffsetY + (y * levelHeight) + (levelHeight/2)
+			};
+		}
+		
+		// 3. Rysowanie pou0142u0105czeu0144
+		for (node in cast(project.pathfindingPaths.nodes, Array<Dynamic>)) {
+			var nodeId = node.id;
 			
-			// Get the levels involved in the connection
-			var fromLevel = levelsById.get(conn.fromLevelIid);
+			// Oblicz pozycju0119 wu0119zu0142a na podstawie jego ID
+			var regex = ~/([0-9]+)_([0-9]+)/g;
+			if (!regex.match(nodeId)) continue;
 			
-			// Skip if from-level is not on current depth or not found
-			if (fromLevel == null) {
-				continue;
-			}
+			var xCoord = Std.parseInt(regex.matched(1));
+			var yCoord = Std.parseInt(regex.matched(2));
+			var nodePos = getPositionFromCoords(xCoord, yCoord);
 			
-			// For connections to null (ocean/empty), only show if enabled
-			if (conn.toLevelIid == null) {
-				// Handle connections to ocean/edge
-				var sourceX = 0.0;
-				var sourceY = 0.0;
-				var targetX = 0.0;
-				var targetY = 0.0;
-				
-				// Calculate center point of from-level
-				var centerX = fromLevel.worldX + fromLevel.pxWid * 0.5;
-				var centerY = fromLevel.worldY + fromLevel.pxHei * 0.5;
-				
-				// Determine connection points based on connection type
-				switch (conn.connectionPoint) {
-					case 'left':
-						sourceX = fromLevel.worldX;
-						sourceY = centerY;
-						targetX = sourceX - fromLevel.pxWid * 0.3; // Short line to the left
-						targetY = sourceY;
-						
-					case 'right':
-						sourceX = fromLevel.worldX + fromLevel.pxWid;
-						sourceY = centerY;
-						targetX = sourceX + fromLevel.pxWid * 0.3; // Short line to the right
-						targetY = sourceY;
-						
-					case 'top':
-						sourceX = centerX;
-						sourceY = fromLevel.worldY;
-						targetX = sourceX;
-						targetY = sourceY - fromLevel.pxHei * 0.3; // Short line upward
-						
-					case 'bottom':
-						sourceX = centerX;
-						sourceY = fromLevel.worldY + fromLevel.pxHei;
-						targetX = sourceX;
-						targetY = sourceY + fromLevel.pxHei * 0.3; // Short line downward
-						
-					case 'topLeft':
-						sourceX = fromLevel.worldX;
-						sourceY = fromLevel.worldY;
-						targetX = sourceX - fromLevel.pxWid * 0.2;
-						targetY = sourceY - fromLevel.pxHei * 0.2;
-						
-					case 'topRight':
-						sourceX = fromLevel.worldX + fromLevel.pxWid;
-						sourceY = fromLevel.worldY;
-						targetX = sourceX + fromLevel.pxWid * 0.2;
-						targetY = sourceY - fromLevel.pxHei * 0.2;
-						
-					case 'bottomLeft':
-						sourceX = fromLevel.worldX;
-						sourceY = fromLevel.worldY + fromLevel.pxHei;
-						targetX = sourceX - fromLevel.pxWid * 0.2;
-						targetY = sourceY + fromLevel.pxHei * 0.2;
-						
-					case 'bottomRight':
-						sourceX = fromLevel.worldX + fromLevel.pxWid;
-						sourceY = fromLevel.worldY + fromLevel.pxHei;
-						targetX = sourceX + fromLevel.pxWid * 0.2;
-						targetY = sourceY + fromLevel.pxHei * 0.2;
+			// Narysuj punkt dla wu0119zu0142a
+			g.beginFill(0x33CC33);
+			g.lineStyle(0);
+			g.drawCircle(nodePos.x, nodePos.y, 4 * zoomScale);
+			g.endFill();
+			
+			// Dla kau017cdego pou0142u0105czenia narysuj liniu0119
+			var connections = node.connections;
+			for (connId in Reflect.fields(connections)) {
+				// Oblicz pozycju0119 wu0119zu0142a docelowego
+				if (regex.match(connId)) {
+					var targetX = Std.parseInt(regex.matched(1));
+					var targetY = Std.parseInt(regex.matched(2));
+					var targetPos = getPositionFromCoords(targetX, targetY);
+					
+					// Narysuj liniu0119 miu0119dzy wu0119zu0142ami
+					g.lineStyle(lineThickness, 0x3399FF);
+					g.moveTo(nodePos.x, nodePos.y);
+					g.lineTo(targetPos.x, targetPos.y);
 				}
-				
-				// Draw the connection to ocean/edge with a semi-transparent line
-				g.lineStyle(lineThickness, 0x0099ff, 0.5);
-				g.moveTo(sourceX, sourceY);
-				g.lineTo(targetX, targetY);
-				
-				// Draw connection points
-				g.lineStyle(0);
-				g.beginFill(0x0099ff, 0.7);
-				g.drawCircle(sourceX, sourceY, pointSize);
-				g.drawCircle(targetX, targetY, pointSize);
-				g.endFill();
-			}
-			else {
-				// Get the target level
-				var toLevel = levelsById.get(conn.toLevelIid);
-				
-				// Skip if target level is not on current depth or not found
-				if (toLevel == null) {
-					continue;
-				}
-				
-				// Calculate connection points between levels
-				var sourceX = 0.0;
-				var sourceY = 0.0;
-				var targetX = 0.0;
-				var targetY = 0.0;
-				
-				// Calculate centers of levels
-				var fromCenterX = fromLevel.worldX + fromLevel.pxWid * 0.5;
-				var fromCenterY = fromLevel.worldY + fromLevel.pxHei * 0.5;
-				var toCenterX = toLevel.worldX + toLevel.pxWid * 0.5;
-				var toCenterY = toLevel.worldY + toLevel.pxHei * 0.5;
-				
-				// Determine connection points based on connection type
-				switch (conn.connectionPoint) {
-					case 'left':
-						sourceX = fromLevel.worldX;
-						sourceY = fromCenterY;
-						targetX = toLevel.worldX + toLevel.pxWid;
-						targetY = toCenterY;
-						
-					case 'right':
-						sourceX = fromLevel.worldX + fromLevel.pxWid;
-						sourceY = fromCenterY;
-						targetX = toLevel.worldX;
-						targetY = toCenterY;
-						
-					case 'top':
-						sourceX = fromCenterX;
-						sourceY = fromLevel.worldY;
-						targetX = toCenterX;
-						targetY = toLevel.worldY + toLevel.pxHei;
-						
-					case 'bottom':
-						sourceX = fromCenterX;
-						sourceY = fromLevel.worldY + fromLevel.pxHei;
-						targetX = toCenterX;
-						targetY = toLevel.worldY;
-						
-					case 'topLeft':
-						sourceX = fromLevel.worldX;
-						sourceY = fromLevel.worldY;
-						targetX = toLevel.worldX + toLevel.pxWid;
-						targetY = toLevel.worldY + toLevel.pxHei;
-						
-					case 'topRight':
-						sourceX = fromLevel.worldX + fromLevel.pxWid;
-						sourceY = fromLevel.worldY;
-						targetX = toLevel.worldX;
-						targetY = toLevel.worldY + toLevel.pxHei;
-						
-					case 'bottomLeft':
-						sourceX = fromLevel.worldX;
-						sourceY = fromLevel.worldY + fromLevel.pxHei;
-						targetX = toLevel.worldX + toLevel.pxWid;
-						targetY = toLevel.worldY;
-						
-					case 'bottomRight':
-						sourceX = fromLevel.worldX + fromLevel.pxWid;
-						sourceY = fromLevel.worldY + fromLevel.pxHei;
-						targetX = toLevel.worldX;
-						targetY = toLevel.worldY;
-				}
-				
-				// Draw the connection line between levels
-				g.lineStyle(lineThickness, 0x00cc33, 0.8);
-				g.moveTo(sourceX, sourceY);
-				g.lineTo(targetX, targetY);
-				
-				// Draw connection points
-				g.lineStyle(0);
-				g.beginFill(0x00cc33, 1);
-				g.drawCircle(sourceX, sourceY, pointSize);
-				g.drawCircle(targetX, targetY, pointSize);
-				g.endFill();
 			}
 		}
 	}
@@ -1404,4 +1234,79 @@ class WorldRender extends dn.Process {
 		}
 	}
 
+	function updateLevelVisibility(l:data.Level) {
+		var wl = getWorldLevel(l);
+
+		wl.bgWrapper.alpha = editor.worldMode ? 1 : 0.2;
+
+		if( l.uid==editor.curLevelId && !editor.worldMode ) {
+			// Hide current level in editor mode
+			wl.outline.visible = false;
+			wl.fadeMask.visible = false;
+			wl.render.visible = false;
+		}
+		else if( editor.worldMode ) {
+			// Show everything in world mode
+			wl.bgWrapper.visible = wl.render.visible = wl.outline.visible = camera.isOnScreenLevel(l);
+			wl.fadeMask.visible = false;
+			wl.outline.alpha = 1;
+		}
+		else {
+			// Fade other levels in editor mode
+			var dist = editor.curLevel.getBoundsDist(l);
+			wl.outline.alpha = 0.3;
+			wl.outline.visible = camera.isOnScreenLevel(l);
+			wl.fadeMask.visible = true;
+			wl.render.visible = wl.outline.visible && dist<=300;
+		}
+
+		// Depths
+		if( l.worldDepth!=editor.curWorldDepth ) {
+			if( l.worldDepth<editor.curWorldDepth ) {
+				// Above
+				wl.outline.alpha*=0.45;
+				wl.bgWrapper.visible = false;
+				wl.render.visible = false;
+				wl.fadeMask.visible = false;
+				if( M.fabs(l.worldDepth-editor.curWorldDepth)>=2 )
+					wl.outline.alpha*=0.3;
+			}
+			else {
+				// Beneath
+				wl.bgWrapper.alpha*=0.6;
+				wl.render.alpha*=0.15;
+				wl.outline.alpha*=0.2;
+				if( M.fabs(l.worldDepth-editor.curWorldDepth)>=2 )
+					wl.bgWrapper.alpha*=0.3;
+			}
+		}
+		else {
+			// Same world depth
+			wl.render.alpha = 1;
+		}
+	}
+
+	public function updateLayout() {
+		var cur = editor.curLevel;
+
+		// Level layout
+		for( l in editor.curWorld.levels ) {
+			if( !worldLevels.exists(l.uid) )
+				continue;
+
+			var wl = getWorldLevel(l);
+			updateLevelVisibility(l);
+
+			// Position
+			wl.render.setPosition( l.worldX, l.worldY );
+			wl.outline.setPosition( l.worldX, l.worldY );
+			wl.bgWrapper.setPosition( l.worldX, l.worldY );
+			wl.fadeMask.setPosition( l.worldX, l.worldY );
+			wl.fadeMask.scaleX = l.pxWid;
+			wl.fadeMask.scaleY = l.pxHei;
+		}
+
+		updateAllLevelIdentifiers(false);
+		updateFieldsPos();
+	}
 }
