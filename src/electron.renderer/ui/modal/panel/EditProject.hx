@@ -135,6 +135,14 @@ class EditProject extends ui.modal.Panel {
 		return null;
 	}
 
+	function getChunkName(levelId:String):String {
+		var coords = extractGridCoords(levelId);
+		if(coords == null) {
+			return null;
+		}
+		return coords.x + "_" + coords.y;
+	}
+
 	function updateProjectForm() {
 		ui.Tip.clear();
 		var jForms = jContent.find("dl.form");
@@ -485,7 +493,7 @@ class EditProject extends ui.modal.Panel {
 			for(w in project.worlds)
 			for(l in w.levels) {
 				// Create a node for each level (at the center of the level)
-				var levelId = l.identifier;
+				var levelId = getChunkName(l.identifier);
 				nodeMap.set(levelId, { id: levelId, neighbors: new Map<String, Int>() });
 
 				var gridCoords = extractGridCoords(l.identifier);
@@ -508,7 +516,7 @@ class EditProject extends ui.modal.Panel {
 
 				// Check connections between levels
 				for (l in w.levels) {
-					var levelId = l.identifier;
+					var levelId = getChunkName(l.identifier);
 					var levelX = l.worldX;
 					var levelY = l.worldY;
 					var levelWidth = l.pxWid;
@@ -538,7 +546,7 @@ class EditProject extends ui.modal.Panel {
 						if (neighborLevel == null || neighborLevel == l)
 							continue;
 
-						var neighborId = neighborLevel.identifier;
+						var neighborId = getChunkName(neighborLevel.identifier);
 						
 						// Create a transition node ID using level identifiers and connection direction
 						var transitionId = levelId + "-" + neighborId + "-" + connName;
