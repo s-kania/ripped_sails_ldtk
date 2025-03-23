@@ -484,7 +484,7 @@ class EditProject extends ui.modal.Panel {
 			};
 
 			// Create a temporary map to store all nodes for easier access
-			var nodeMap = new Map<String, { id:String, neighbors:Map<String, Int> }>();
+			var nodeMap = new Map<String, { id:String, connections:Map<String, Int> }>();
 			// Find max grid coordinates to determine world size
 			var maxGridX:Float = 0;
 			var maxGridY:Float = 0;
@@ -494,7 +494,7 @@ class EditProject extends ui.modal.Panel {
 			for(l in w.levels) {
 				// Create a node for each level (at the center of the level)
 				var levelId = getChunkName(l.identifier);
-				nodeMap.set(levelId, { id: levelId, neighbors: new Map<String, Int>() });
+				nodeMap.set(levelId, { id: levelId, connections: new Map<String, Int>() });
 
 				var gridCoords = extractGridCoords(l.identifier);
 				if(gridCoords != null) {
@@ -549,19 +549,19 @@ class EditProject extends ui.modal.Panel {
 						var neighborId = getChunkName(neighborLevel.identifier);
 						
 						// Create a transition node ID using level identifiers and connection direction
-						var transitionId = levelId + "-" + neighborId + "-" + connName;
+						var transitionId = levelId + "⎯" + neighborId + "⎯" + connName;
 						
 						// Add the transition node if it doesn't exist
 						if(!nodeMap.exists(transitionId)) {
-							nodeMap.set(transitionId, { id: transitionId, neighbors: new Map<String, Int>() });
+							nodeMap.set(transitionId, { id: transitionId, connections: new Map<String, Int>() });
 							
 							// Connect the level to the transition node
-							nodeMap.get(levelId).neighbors.set(transitionId, 1);
-							nodeMap.get(transitionId).neighbors.set(levelId, 1);
+							nodeMap.get(levelId).connections.set(transitionId, 1);
+							nodeMap.get(transitionId).connections.set(levelId, 1);
 							
 							// Connect the transition node to the neighbor level
-							nodeMap.get(transitionId).neighbors.set(neighborId, 1);
-							nodeMap.get(neighborId).neighbors.set(transitionId, 1);
+							nodeMap.get(transitionId).connections.set(neighborId, 1);
+							nodeMap.get(neighborId).connections.set(transitionId, 1);
 						}
 					}
 				}
@@ -571,11 +571,11 @@ class EditProject extends ui.modal.Panel {
 			for(node in nodeMap) {
 				var nodeObj = {
 					id: node.id,
-					neighbors: {}
+					connections: {}
 				};
 				
-				for(neighborId => weight in node.neighbors) {
-					Reflect.setField(nodeObj.neighbors, neighborId, weight);
+				for(neighborId => weight in node.connections) {
+					Reflect.setField(nodeObj.connections, neighborId, weight);
 				}
 				
 				project.pathfindingPaths.nodes.push(nodeObj);
