@@ -122,6 +122,19 @@ class EditProject extends ui.modal.Panel {
 			);
 	}
 
+		// Helper function to extract grid coordinates from level ID
+	function extractGridCoords(levelId:String): {x:Float, y:Float} {
+		var parts = levelId.split("_");
+		if(parts.length >= 3) {
+			var x = Std.parseFloat(parts[parts.length-2]);
+			var y = Std.parseFloat(parts[parts.length-1]);
+			if(x != null && y != null) {
+				return { x: x, y: y };
+			}
+		}
+		return null;
+	}
+
 	function updateProjectForm() {
 		ui.Tip.clear();
 		var jForms = jContent.find("dl.form");
@@ -457,26 +470,32 @@ class EditProject extends ui.modal.Panel {
 		i.linkEvent(ProjectSettingsChanged);
 
 		jForms.find("button.generatePaths").click( function(ev) {
-			// Initialize pathfindingPaths at the project level if it doesn't exist
+			// Initialize pathfindingPaths at the project level with the new format
 			project.pathfindingPaths = {
-				levelConnections: []
+				nodes: []
 			};
 
-			// Update collision layers for pathfinding in all levels first
-			// for(w in project.worlds)
-			// for(l in w.levels)
-			// 	l.generateCombinedCollisionLayer();
+			// Create a temporary map to store all nodes for easier access
+			var nodeMap = new Map<String, { id:String, neighbors:Map<String, Int> }>();
+			// Find max grid coordinates to determine world size
+			var maxGridX:Float = 0;
+			var maxGridY:Float = 0;
 			
-			// Remove pathfindingPaths from individual levels if they exist
-			// for(w in project.worlds)
-			// for(l in w.levels) {
-			// 	if (untyped l.__pathfindingPaths != null) {
-			// 		untyped l.__pathfindingPaths = null;
-			// 		l.invalidateJsonCache(); // Ensure the change is saved
-			// 	}
-			// }
+			// Step 1: Create center nodes for each level and find max level size
+			for(w in project.worlds)
+			for(l in w.levels) {
+				// Create a node for each level (at the center of the level)
+				var levelId = l.identifier;
+				nodeMap.set(levelId, { id: levelId, neighbors: new Map<String, Int>() });
+
+				var gridCoords = extractGridCoords(l.identifier);
+				if(gridCoords != null) {
+					maxGridX = Math.max(maxGridX, gridCoords.x);
+					maxGridY = Math.max(maxGridY, gridCoords.y);
+				}
+			}
 			
-			// Calculate level connections for each world
+			// Step 2: Create transition nodes and connections
 			for (w in project.worlds) {
 				// Create a map of level positions
 				var levelsByPos = new Map<String, data.Level>();
@@ -486,14 +505,15 @@ class EditProject extends ui.modal.Panel {
 					var key = '$worldX,$worldY';
 					levelsByPos.set(key, l);
 				}
-				
+
 				// Check connections between levels
 				for (l in w.levels) {
+					var levelId = l.identifier;
 					var levelX = l.worldX;
 					var levelY = l.worldY;
 					var levelWidth = l.pxWid;
 					var levelHeight = l.pxHei;
-					
+
 					// Define potential orthogonal connections only
 					// Format: [dx, dy, connectionName]
 					var potentialConnections:Array<Dynamic> = [
@@ -502,82 +522,60 @@ class EditProject extends ui.modal.Panel {
 						[0, -1, 'top'],    // Top
 						[0, 1, 'bottom']   // Bottom
 					];
-					
+
 					// Check each potential connection
 					for (conn in potentialConnections) {
 						var dx:Int = untyped conn[0];
 						var dy:Int = untyped conn[1];
 						var connName:String = untyped conn[2];
-						
+
 						var neighborX = levelX + dx * levelWidth;
 						var neighborY = levelY + dy * levelHeight;
 						var neighborKey = '$neighborX,$neighborY';
 						var neighborLevel = levelsByPos.get(neighborKey);
 						
-						// Handle case when neighbor doesn't exist (ocean - always passable)
-						if (neighborLevel == null) {
-							project.pathfindingPaths.levelConnections.push({
-								fromLevelIid: l.iid,
-								toLevelIid: null,
-								connectionPoint: connName,
-								isPassable: true,
-								connectionCoords: []
-							});
+						// Skip if no neighbor or if it's the same level
+						if (neighborLevel == null || neighborLevel == l)
 							continue;
-						}
+
+						var neighborId = neighborLevel.identifier;
 						
-						// Get collision layers
-						var collisionLayer1 = l.collisionLayer;
-						var collisionLayer2 = neighborLevel.collisionLayer;
+						// Create a transition node ID using level identifiers and connection direction
+						var transitionId = levelId + "-" + neighborId + "-" + connName;
 						
-						// Check connection based on direction
-						var isPassable = false;
-						var connectionCoords = [];
-						
-						if (connName == 'left' || connName == 'right') {
-							// For horizontal connections
-							var x1 = (connName == 'left') ? 0 : collisionLayer1[0].length - 1;
-							var x2 = (connName == 'left') ? collisionLayer2[0].length - 1 : 0;
+						// Add the transition node if it doesn't exist
+						if(!nodeMap.exists(transitionId)) {
+							nodeMap.set(transitionId, { id: transitionId, neighbors: new Map<String, Int>() });
 							
-							for (y in 0...collisionLayer1.length) {
-								var cell1 = collisionLayer1[y][x1];
-								var cell2 = collisionLayer2[y][x2];
-								
-								if (cell1 == 0 && cell2 == 0) {
-									isPassable = true;
-									connectionCoords.push({x1: x1, y1: y, x2: x2, y2: y});
-								}
-							}
-						} else {
-							// For vertical connections
-							var y1 = (connName == 'top') ? 0 : collisionLayer1.length - 1;
-							var y2 = (connName == 'top') ? collisionLayer2.length - 1 : 0;
+							// Connect the level to the transition node
+							nodeMap.get(levelId).neighbors.set(transitionId, 1);
+							nodeMap.get(transitionId).neighbors.set(levelId, 1);
 							
-							for (x in 0...collisionLayer1[0].length) {
-								var cell1 = collisionLayer1[y1][x];
-								var cell2 = collisionLayer2[y2][x];
-								
-								if (cell1 == 0 && cell2 == 0) {
-									isPassable = true;
-									connectionCoords.push({x1: x, y1: y1, x2: x, y2: y2});
-								}
-							}
+							// Connect the transition node to the neighbor level
+							nodeMap.get(transitionId).neighbors.set(neighborId, 1);
+							nodeMap.get(neighborId).neighbors.set(transitionId, 1);
 						}
-						
-						// Add connection to pathfindingPaths
-						project.pathfindingPaths.levelConnections.push({
-							fromLevelIid: l.iid,
-							toLevelIid: neighborLevel.iid,
-							connectionPoint: connName,
-							isPassable: isPassable,
-							connectionCoords: connectionCoords
-						});
 					}
 				}
 			}
 			
+			// Convert the nodeMap to the final format
+			for(node in nodeMap) {
+				var nodeObj = {
+					id: node.id,
+					neighbors: {}
+				};
+				
+				for(neighborId => weight in node.neighbors) {
+					Reflect.setField(nodeObj.neighbors, neighborId, weight);
+				}
+				
+				project.pathfindingPaths.nodes.push(nodeObj);
+			}
+			
+			// Update UI and notify success
 			editor.ge.emit(ProjectSettingsChanged);
-			N.success(L.t._('Pathfinding level connections generated successfully.'));
+			N.success(L.t._('Pathfinding nodes and connections generated successfully.'));
 		});
 
 		// Advanced options
