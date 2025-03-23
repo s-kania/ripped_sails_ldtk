@@ -499,8 +499,8 @@ class EditProject extends ui.modal.Panel {
 				}
 			}
 
-			for(x in 0...Std.int(maxGridX))
-			for(y in 0...Std.int(maxGridY)) {
+			for(x in 0...Std.int(maxGridX+1))
+			for(y in 0...Std.int(maxGridY+1)) {
 				var levelId = x + "_" + y;
 				nodeMap.set(levelId, { id: levelId, connections: new Map<String, Int>() });
 			}
