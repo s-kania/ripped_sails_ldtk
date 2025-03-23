@@ -1052,12 +1052,12 @@ class WorldRender extends dn.Process {
 		var zoomScale = 1 / camera.adjustedZoom;
 		var lineThickness = Math.max(1, 2 * zoomScale);
 		
-		// Sprawdzamy czy istnieje struktura pathfindingPaths i jej wu0119zu0142y
+		// Sprawdzamy czy istnieje struktura pathfindingPaths i jej węzły
 		if (project.pathfindingPaths == null || project.pathfindingPaths.nodes == null || project.pathfindingPaths.nodes.length == 0) {
 			return;
 		}
 		
-		// 1. Znajdu017a rozmiar poziomu na podstawie poziomu "0_0" lub pierwszego dostu0119pnego
+		// 1. Znajdź rozmiar poziomu na podstawie poziomu "0_0" lub pierwszego dostępnego
 		var levelWidth = 0;
 		var levelHeight = 0;
 		var worldOffsetX = 0;
@@ -1080,7 +1080,7 @@ class WorldRender extends dn.Process {
 						refLevel = l;
 						break;
 					} else if (refLevel == null) {
-						// Zapisz jako potencjalny poziom odniesienia, jeu015bli nie znaleziono "0_0"
+						// Zapisz jako potencjalny poziom odniesienia, jeśli nie znaleziono "0_0"
 						refLevel = l;
 					}
 				}
@@ -1088,11 +1088,11 @@ class WorldRender extends dn.Process {
 			if (refLevel != null && levelWidth > 0) break;
 		}
 		
-		// Jeu015bli znaleziono tylko inny poziom niu017c "0_0", uu017cyj go jako odniesienie
+		// Jeśli znaleziono tylko inny poziom niż "0_0", użyj go jako odniesienie
 		if (refLevel != null && levelWidth == 0) {
 			levelWidth = refLevel.pxWid;
 			levelHeight = refLevel.pxHei;
-			// Oblicz offset na podstawie koordynatu00f3w
+			// Oblicz offset na podstawie koordynatów
 			var regex = ~/([0-9]+)_([0-9]+)/g;
 			if (regex.match(refLevel.identifier)) {
 				var xCoord = Std.parseInt(regex.matched(1));
@@ -1105,9 +1105,12 @@ class WorldRender extends dn.Process {
 			}
 		}
 		
-		if (levelWidth == 0) return; // Nie znaleziono u017cadnego poziomu
+		if (levelWidth == 0) return; // Nie znaleziono żadnego poziomu
 		
-		// 2. Utworzenie funkcji do obliczania pozycji na podstawie koordynatu00f3w
+		// Mapa do przechowywania pozycji węzłów
+		var nodePositions = new Map<String, {x:Float, y:Float}>();
+		
+		// 2. Obliczanie pozycji węzłów poziomu
 		function getPositionFromCoords(x:Int, y:Int) {
 			return {
 				x: worldOffsetX + (x * levelWidth) + (levelWidth/2),
@@ -1115,38 +1118,100 @@ class WorldRender extends dn.Process {
 			};
 		}
 		
-		// 3. Rysowanie pou0142u0105czeu0144
+		// Obliczanie pozycji węzła na podstawie jego ID
+		function getNodePosition(nodeId:String) {
+			// Jeśli pozycja została już obliczona, zwróć ją
+			if (nodePositions.exists(nodeId)) {
+				return nodePositions.get(nodeId);
+			}
+			
+			// Sprawdź czy węzeł to poziom (format: X_Y)
+			var levelRegex = ~/^([0-9]+)_([0-9]+)$/;
+			if (levelRegex.match(nodeId)) {
+				var x = Std.parseInt(levelRegex.matched(1));
+				var y = Std.parseInt(levelRegex.matched(2));
+				var pos = getPositionFromCoords(x, y);
+				nodePositions.set(nodeId, pos);
+				return pos;
+			}
+			
+			// Sprawdź czy węzeł to przejście (format: X_Y\u23AFX_Y\u23AFdirection)
+			// Znak "\u23AF" to znak Unicode używany w identyfikatorach (długa kreska pozioma)
+			var transitionRegex = ~/([0-9]+)_([0-9]+)[\u23AF⎯]([0-9]+)_([0-9]+)[\u23AF⎯](right|bottom)/;
+			if (transitionRegex.match(nodeId)) {
+				var fromX = Std.parseInt(transitionRegex.matched(1));
+				var fromY = Std.parseInt(transitionRegex.matched(2));
+				var toX = Std.parseInt(transitionRegex.matched(3));
+				var toY = Std.parseInt(transitionRegex.matched(4));
+				var direction = transitionRegex.matched(5);
+				
+				// Oblicz pozycje węzłów poziomu
+				var fromPos = getPositionFromCoords(fromX, fromY);
+				var toPos = getPositionFromCoords(toX, toY);
+				
+				// Oblicz pozycję węzła przejścia na podstawie kierunku
+				var transitionPos = {x: 0.0, y: 0.0};
+				
+				if (direction == "right") {
+					// Przejście w prawo - na granicy między poziomami na osi X
+					transitionPos.x = worldOffsetX + (fromX * levelWidth) + levelWidth;
+					transitionPos.y = fromPos.y; // Ta sama wysokość co poziom źródłowy
+				} else if (direction == "bottom") {
+					// Przejście w dół - na granicy między poziomami na osi Y
+					transitionPos.x = fromPos.x; // Ta sama szerokość co poziom źródłowy
+					transitionPos.y = worldOffsetY + (fromY * levelHeight) + levelHeight;
+				}
+				
+				nodePositions.set(nodeId, transitionPos);
+				return transitionPos;
+			}
+			
+			// Nie udało się obliczyć pozycji
+			return null;
+		}
+		
+		// 3. Przetworzenie wszystkich węzłów i ich pozycji
 		for (node in cast(project.pathfindingPaths.nodes, Array<Dynamic>)) {
 			var nodeId = node.id;
+			var nodePos = getNodePosition(nodeId);
+			if (nodePos == null) continue;
 			
-			// Oblicz pozycju0119 wu0119zu0142a na podstawie jego ID
-			var regex = ~/([0-9]+)_([0-9]+)/g;
-			if (!regex.match(nodeId)) continue;
+			// Ustal typ węzła (poziom lub przejście)
+			var isTransition = nodeId.indexOf("\u23AF") >= 0 || nodeId.indexOf("⎯") >= 0;
 			
-			var xCoord = Std.parseInt(regex.matched(1));
-			var yCoord = Std.parseInt(regex.matched(2));
-			var nodePos = getPositionFromCoords(xCoord, yCoord);
+			// Narysuj punkt dla węzła z odpowiednim kolorem i rozmiarem
+			if (isTransition) {
+				// Węzeł przejścia - pomarańczowy, mniejszy
+				g.beginFill(0xFF9900);
+				g.lineStyle(0);
+				g.drawCircle(nodePos.x, nodePos.y, 3 * zoomScale);
+				g.endFill();
+			} else {
+				// Węzeł poziomu - zielony, większy
+				g.beginFill(0x33CC33);
+				g.lineStyle(0);
+				g.drawCircle(nodePos.x, nodePos.y, 4 * zoomScale);
+				g.endFill();
+			}
 			
-			// Narysuj punkt dla wu0119zu0142a
-			g.beginFill(0x33CC33);
-			g.lineStyle(0);
-			g.drawCircle(nodePos.x, nodePos.y, 4 * zoomScale);
-			g.endFill();
-			
-			// Dla kau017cdego pou0142u0105czenia narysuj liniu0119
+			// Narysuj połączenia do innych węzłów
 			var connections = node.connections;
 			for (connId in Reflect.fields(connections)) {
-				// Oblicz pozycju0119 wu0119zu0142a docelowego
-				if (regex.match(connId)) {
-					var targetX = Std.parseInt(regex.matched(1));
-					var targetY = Std.parseInt(regex.matched(2));
-					var targetPos = getPositionFromCoords(targetX, targetY);
-					
-					// Narysuj liniu0119 miu0119dzy wu0119zu0142ami
-					g.lineStyle(lineThickness, 0x3399FF);
-					g.moveTo(nodePos.x, nodePos.y);
-					g.lineTo(targetPos.x, targetPos.y);
+				var connPos = getNodePosition(connId);
+				if (connPos == null) continue;
+				
+				// Wybierz kolor linii w zależności od typów połączonych węzłów
+				var lineColor = 0x3399FF; // Kolor domyślny (niebieski)
+				
+				// Ustaw kolor linii w zależności od typu węzła
+				if (isTransition) {
+					lineColor = 0xAAAAAA; // Szary dla połączeń z węzłami przejścia
 				}
+				
+				// Narysuj linię między węzłami
+				g.lineStyle(lineThickness, lineColor);
+				g.moveTo(nodePos.x, nodePos.y);
+				g.lineTo(connPos.x, connPos.y);
 			}
 		}
 	}
