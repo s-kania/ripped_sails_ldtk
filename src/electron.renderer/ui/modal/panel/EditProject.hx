@@ -492,16 +492,21 @@ class EditProject extends ui.modal.Panel {
 			// Step 1: Create center nodes for each level and find max level size
 			for(w in project.worlds)
 			for(l in w.levels) {
-				// Create a node for each level (at the center of the level)
-				var levelId = getChunkName(l.identifier);
-				nodeMap.set(levelId, { id: levelId, connections: new Map<String, Int>() });
-
 				var gridCoords = extractGridCoords(l.identifier);
 				if(gridCoords != null) {
 					maxGridX = Math.max(maxGridX, gridCoords.x);
 					maxGridY = Math.max(maxGridY, gridCoords.y);
 				}
 			}
+
+			for(x in 0...Std.int(maxGridX))
+			for(y in 0...Std.int(maxGridY)) {
+				var levelId = x + "_" + y;
+				nodeMap.set(levelId, { id: levelId, connections: new Map<String, Int>() });
+			}
+
+			js.Browser.console.log('world size: (${maxGridX}x${maxGridY})', nodeMap);
+
 			
 			// Step 2: Create transition nodes and connections
 			for (w in project.worlds) {
