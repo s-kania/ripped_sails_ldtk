@@ -143,6 +143,74 @@ class EditProject extends ui.modal.Panel {
 		return coords.x + "_" + coords.y;
 	}
 
+	function hasValidTransition(fromCollisionLayer:Array<Array<Int>>, toCollisionLayer:Array<Array<Int>>, direction:String) {
+		// Jeśli którakolwiek warstwa nie istnieje, przejście jest możliwe
+		if (fromCollisionLayer == null || toCollisionLayer == null) {
+			return true;
+		}
+		
+		// Domyślnie zakładamy, że nie ma przejścia
+		var hasTransition = false;
+		
+		switch (direction) {
+			case "right":
+				// Sprawdzamy prawą granicę pierwszego poziomu i lewą granicę drugiego poziomu
+				// Iterujemy po całej wysokości
+				for (y in 0...fromCollisionLayer.length) {
+					// Sprawdź czy punkt na prawej krawędzi pierwszego poziomu jest przechodni (0)
+					var fromRightEdge = (y < fromCollisionLayer.length && 
+						fromCollisionLayer[y] != null && 
+						fromCollisionLayer[y][fromCollisionLayer[y].length - 1] == 0);
+					
+					// Sprawdź czy punkt na lewej krawędzi drugiego poziomu jest przechodni (0)
+					var toLeftEdge = (y < toCollisionLayer.length && 
+						toCollisionLayer[y] != null && 
+						toCollisionLayer[y][0] == 0);
+					
+					// Jeśli oba punkty są przechodnie, znaleźliśmy przejście
+					if (fromRightEdge && toLeftEdge) {
+						hasTransition = true;
+						break;
+					}
+				}
+				
+			case "bottom":
+				// Sprawdzamy dolną granicę pierwszego poziomu i górną granicę drugiego poziomu
+				// Iterujemy po całej szerokości
+				if (fromCollisionLayer.length > 0 && toCollisionLayer.length > 0) {
+					var width = fromCollisionLayer[0].length;
+					
+					for (x in 0...width) {
+						// Sprawdź czy punkt na dolnej krawędzi pierwszego poziomu jest przechodni (0)
+						var fromBottomEdge = (fromCollisionLayer[fromCollisionLayer.length - 1] != null && 
+							x < fromCollisionLayer[fromCollisionLayer.length - 1].length && 
+							fromCollisionLayer[fromCollisionLayer.length - 1][x] == 0);
+						
+						// Sprawdź czy punkt na górnej krawędzi drugiego poziomu jest przechodni (0)
+						var toTopEdge = (toCollisionLayer[0] != null && 
+							x < toCollisionLayer[0].length && 
+							toCollisionLayer[0][x] == 0);
+						
+						// Jeśli oba punkty są przechodnie, znaleźliśmy przejście
+						if (fromBottomEdge && toTopEdge) {
+							hasTransition = true;
+							break;
+						}
+					}
+				}
+				
+			case "left":
+				// Wywołaj funkcję dla kierunku przeciwnego, zamieniając poziomy miejscami
+				hasTransition = hasValidTransition(toCollisionLayer, fromCollisionLayer, "right");
+				
+			case "top":
+				// Wywołaj funkcję dla kierunku przeciwnego, zamieniając poziomy miejscami
+				hasTransition = hasValidTransition(toCollisionLayer, fromCollisionLayer, "bottom");
+		}
+		
+		return hasTransition;
+	}
+
 	function updateProjectForm() {
 		ui.Tip.clear();
 		var jForms = jContent.find("dl.form");
@@ -478,167 +546,101 @@ class EditProject extends ui.modal.Panel {
 		i.linkEvent(ProjectSettingsChanged);
 
 		jForms.find("button.generatePaths").click( function(ev) {
-			// Initialize pathfindingPaths at the project level with the new format
+			// Initialize pathfindingPaths at the project level
 			project.pathfindingPaths = {
 				nodes: []
 			};
 
-			// Create a temporary map to store all nodes for easier access
+			// Create a temporary map to store all nodes
 			var nodeMap = new Map<String, { id:String, connections:Map<String, Int> }>();
-			// Find max grid coordinates to determine world size
+			
+			// Find max grid coordinates and create level map
 			var maxGridX:Float = 0;
 			var maxGridY:Float = 0;
+			var levelsByGridPos = new Map<String, data.Level>();
 			
-			// Step 1: Create center nodes for each level and find max level size
-			for(w in project.worlds)
-			for(l in w.levels) {
-				var gridCoords = extractGridCoords(l.identifier);
-				if(gridCoords != null) {
-					maxGridX = Math.max(maxGridX, gridCoords.x);
-					maxGridY = Math.max(maxGridY, gridCoords.y);
+			// Step 1: Map levels and find grid boundaries
+			for(w in project.worlds) {
+				for(l in w.levels) {
+					var gridCoords = extractGridCoords(l.identifier);
+					if(gridCoords != null) {
+						maxGridX = Math.max(maxGridX, gridCoords.x);
+						maxGridY = Math.max(maxGridY, gridCoords.y);
+						var gridKey = Std.int(gridCoords.x) + "_" + Std.int(gridCoords.y);
+						levelsByGridPos.set(gridKey, l);
+					}
 				}
 			}
 
+			// Step 2: Create nodes for each grid position
 			for(x in 0...Std.int(maxGridX+1))
 			for(y in 0...Std.int(maxGridY+1)) {
 				var levelId = x + "_" + y;
 				nodeMap.set(levelId, { id: levelId, connections: new Map<String, Int>() });
 			}
 
-			js.Browser.console.log('world size: (${maxGridX}x${maxGridY})', nodeMap);
-
-			// Step 2: Create connections between adjacent grid cells
+			// Step 3: Create valid connections between adjacent cells
 			for (x in 0...Std.int(maxGridX+1)) {
 				for (y in 0...Std.int(maxGridY+1)) {
 					var currentId = x + "_" + y;
+					var currentLevel = levelsByGridPos.get(currentId);
 					
 					// Define possible directions (right, bottom)
-					// Używamy tylko right i bottom, żeby uniknąć tworzenia duplikatów połączeń
 					var directions = [
-						{ dx: 1, dy: 0, name: "right" },
-						{ dx: 0, dy: 1, name: "bottom" }
+						{ dx: 1, dy: 0, name: "right", reverse: "left" },
+						{ dx: 0, dy: 1, name: "bottom", reverse: "top" }
 					];
 					
-					// Sprawdź każdy kierunek i utwórz połączenie jeśli sąsiad istnieje
 					for (dir in directions) {
 						var nx = x + dir.dx;
 						var ny = y + dir.dy;
 						
-						// Sprawdź czy sąsiad mieści się w granicach gridu
+						// Check if neighbor is within grid bounds
 						if (nx <= maxGridX && ny <= maxGridY) {
 							var neighborId = nx + "_" + ny;
+							var neighborLevel = levelsByGridPos.get(neighborId);
 							
-							// Utwórz identyfikator punktu przejścia
-							var transitionId = currentId + "⎯" + neighborId + "⎯" + dir.name;
+							// Get collision layers for validation
+							var fromCollisionLayer = currentLevel != null ? currentLevel.collisionLayer : null;
+							var toCollisionLayer = neighborLevel != null ? neighborLevel.collisionLayer : null;
 							
-							// Dodaj węzeł przejścia
-							nodeMap.set(transitionId, { id: transitionId, connections: new Map<String, Int>() });
-							
-							// Połącz obecny poziom z punktem przejścia
-							if (nodeMap.exists(currentId)) {
+							// Only create connection if transition is valid
+							if (hasValidTransition(fromCollisionLayer, toCollisionLayer, dir.name)) {
+								// Create transition node
+								var transitionId = currentId + "⎯" + neighborId + "⎯" + dir.name;
+								nodeMap.set(transitionId, { id: transitionId, connections: new Map<String, Int>() });
+								
+								// Connect current level to transition point
 								nodeMap.get(currentId).connections.set(transitionId, 1);
 								nodeMap.get(transitionId).connections.set(currentId, 1);
-							}
-							
-							// Połącz punkt przejścia z sąsiednim poziomem
-							if (nodeMap.exists(neighborId)) {
+								
+								// Connect transition point to neighbor
 								nodeMap.get(transitionId).connections.set(neighborId, 1);
 								nodeMap.get(neighborId).connections.set(transitionId, 1);
 							}
-							
-							// Dodaj również informację o kierunku przeciwnym
-							var reverseDirection = dir.name == "right" ? "left" : "top";
 						}
 					}
 				}
 			}
 
-			// Step 3: Weryfikacja połączeń przy użyciu collisionLayer
-			for (w in project.worlds) {
-				// Tworzymy mapę poziomów według pozycji w gridzie
-				var levelsByGridPos = new Map<String, data.Level>();
-				for (l in w.levels) {
-					var coords = extractGridCoords(l.identifier);
-					if (coords != null) {
-						var gridKey = Std.int(coords.x) + "_" + Std.int(coords.y);
-						levelsByGridPos.set(gridKey, l);
-					}
+			// Step 4: Convert nodeMap to final format
+			for (node in nodeMap) {
+				var connections = [];
+				for (targetId => weight in node.connections) {
+					connections.push({
+						nodeId: targetId,
+						weight: weight
+					});
 				}
-
-				// Przeszukujemy wszystkie węzły przejścia
-				for (nodeId => node in nodeMap) {
-					// Sprawdzamy tylko węzły tranzycji (zawierające znak ⎯)
-					if (nodeId.indexOf("⎯") >= 0) {
-						// Parsujemy ID tranzycji, aby uzyskać poziomy i kierunek
-						var parts = nodeId.split("⎯");
-						if (parts.length >= 3) {
-							var fromLevelId = parts[0];
-							var toLevelId = parts[1];
-							var direction = parts[2];
-
-							// Sprawdzamy, czy oba poziomy istnieją w mapie
-							var fromLevel = levelsByGridPos.get(fromLevelId);
-							var toLevel = levelsByGridPos.get(toLevelId);
-
-							// Jeśli którykolwiek z poziomów nie istnieje fizycznie, połączenie jest dozwolone
-							// Nie możemy sprawdzić kolizji dla nieistniejących poziomów
-							if (fromLevel == null || toLevel == null) {
-								continue;
-							}
-
-							// Tutaj możemy sprawdzić collisionLayer
-							// Przykład: sprawdzamy czy na granicy poziomów są kafelki kolizji
-							var hasCollision = false;
-
-							// W zależności od kierunku, sprawdzamy różne granice
-							if (direction == "right") {
-								// Sprawdz czy istnieje warstwa kolizji w poziomie
-								if (fromLevel.collisionLayer != null) {
-									// Tutaj należy implementować sprawdzenie kolizji na prawej krawędzi
-									// hasCollision = sprawdzKolizjeNaBrzegu();
-								}
-							}
-							else if (direction == "bottom") {
-								// Sprawdz czy istnieje warstwa kolizji w poziomie
-								if (fromLevel.collisionLayer != null) {
-									// Tutaj należy implementować sprawdzenie kolizji na dolnej krawędzi
-									// hasCollision = sprawdzKolizjeNaBrzegu();
-								}
-							}
-
-							// Jeśli wykryto kolizję, usuń połączenie
-							if (hasCollision) {
-								// Usuń połączenia w obu kierunkach
-								if (nodeMap.exists(fromLevelId)) {
-									nodeMap.get(fromLevelId).connections.remove(nodeId);
-								}
-								if (nodeMap.exists(nodeId)) {
-									nodeMap.get(nodeId).connections.remove(fromLevelId);
-									nodeMap.get(nodeId).connections.remove(toLevelId);
-								}
-								if (nodeMap.exists(toLevelId)) {
-									nodeMap.get(toLevelId).connections.remove(nodeId);
-								}
-							}
-						}
-					}
-				}
-			}
-
-			// Step 4: Convert nodeMap to the final pathfindingPaths format
-			for(node in nodeMap) {
-				var nodeObj = {
+				project.pathfindingPaths.nodes.push({
 					id: node.id,
-					connections: {}
-				};
-				
-				for(neighborId => weight in node.connections) {
-					Reflect.setField(nodeObj.connections, neighborId, weight);
-				}
-				
-				project.pathfindingPaths.nodes.push(nodeObj);
+					connections: connections
+				});
 			}
-			
+
+			// Update project
+			// project.changed();
+			// updateProjectForm();
 			// Update UI and notify success
 			editor.ge.emit(ProjectSettingsChanged);
 			N.success(L.t._('Pathfinding nodes and connections generated successfully.'));
