@@ -143,19 +143,43 @@ class EditProject extends ui.modal.Panel {
 		return coords.x + "_" + coords.y;
 	}
 
-	function hasValidTransition(fromCollisionLayer:Array<Array<Int>>, toCollisionLayer:Array<Array<Int>>, direction:String) {
-		// Jeśli którakolwiek warstwa nie istnieje, przejście jest możliwe
-		if (fromCollisionLayer == null || toCollisionLayer == null) {
-			return true;
-		}
+	function getTransitionPoints(fromCollisionLayer:Array<Array<Int>>, toCollisionLayer:Array<Array<Int>>, direction:String):Array<Int> {
+		// Tablica przechowująca pozycje punktów przejścia
+		var transitionPoints:Array<Int> = [];
 		
-		// Domyślnie zakładamy, że nie ma przejścia
-		var hasTransition = false;
+		// Jeśli którakolwiek warstwa nie istnieje, zwróć domyślny punkt przejścia na środku
+		if (fromCollisionLayer == null || toCollisionLayer == null) {
+			// Ustaw punkt pośrodku granicy
+			var middlePos = 0;
+			
+			if (direction == "right" || direction == "left") {
+				// Dla przejść poziomych, oblicz środek wysokości
+				var height = (fromCollisionLayer != null) ? fromCollisionLayer.length : 
+								(toCollisionLayer != null) ? toCollisionLayer.length : 16;
+				middlePos = Math.floor(height / 2);
+			} else { // "bottom" lub "top"
+				// Dla przejść pionowych, oblicz środek szerokości
+				var width = 0;
+				if (fromCollisionLayer != null && fromCollisionLayer.length > 0) {
+					width = fromCollisionLayer[0].length;
+				} else if (toCollisionLayer != null && toCollisionLayer.length > 0) {
+					width = toCollisionLayer[0].length;
+				} else {
+					width = 16; // Domyślna wartość
+				}
+				middlePos = Math.floor(width / 2);
+			}
+			
+			transitionPoints.push(middlePos);
+			return transitionPoints;
+		}
 		
 		switch (direction) {
 			case "right":
 				// Sprawdzamy prawą granicę pierwszego poziomu i lewą granicę drugiego poziomu
 				// Iterujemy po całej wysokości
+				var startY = -1; // Początek ciągłego segmentu przejścia
+				
 				for (y in 0...fromCollisionLayer.length) {
 					// Sprawdź czy punkt na prawej krawędzi pierwszego poziomu jest przechodni (0)
 					var fromRightEdge = (y < fromCollisionLayer.length && 
@@ -167,18 +191,30 @@ class EditProject extends ui.modal.Panel {
 						toCollisionLayer[y] != null && 
 						toCollisionLayer[y][0] == 0);
 					
-					// Jeśli oba punkty są przechodnie, znaleźliśmy przejście
+					// Jeśli oba punkty są przechodnie, mamy przejście
 					if (fromRightEdge && toLeftEdge) {
-						hasTransition = true;
-						break;
+						// Jeśli to początek nowego segmentu
+						if (startY == -1) {
+							startY = y;
+						}
+						// Jeśli to ostatni punkt, zapisz środek segmentu
+						if (y == fromCollisionLayer.length - 1 && startY != -1) {
+							var middleY = Math.floor((startY + y) / 2);
+							transitionPoints.push(middleY);
+						}
+					} else if (startY != -1) {
+						// Koniec ciągłego segmentu, zapisz środek
+						var middleY = Math.floor((startY + (y - 1)) / 2);
+						transitionPoints.push(middleY);
+						startY = -1; // Reset dla nowego segmentu
 					}
 				}
 				
 			case "bottom":
 				// Sprawdzamy dolną granicę pierwszego poziomu i górną granicę drugiego poziomu
-				// Iterujemy po całej szerokości
 				if (fromCollisionLayer.length > 0 && toCollisionLayer.length > 0) {
 					var width = fromCollisionLayer[0].length;
+					var startX = -1; // Początek ciągłego segmentu przejścia
 					
 					for (x in 0...width) {
 						// Sprawdź czy punkt na dolnej krawędzi pierwszego poziomu jest przechodni (0)
@@ -191,24 +227,43 @@ class EditProject extends ui.modal.Panel {
 							x < toCollisionLayer[0].length && 
 							toCollisionLayer[0][x] == 0);
 						
-						// Jeśli oba punkty są przechodnie, znaleźliśmy przejście
+						// Jeśli oba punkty są przechodnie, mamy przejście
 						if (fromBottomEdge && toTopEdge) {
-							hasTransition = true;
-							break;
+							// Jeśli to początek nowego segmentu
+							if (startX == -1) {
+								startX = x;
+							}
+							// Jeśli to ostatni punkt, zapisz środek segmentu
+							if (x == width - 1 && startX != -1) {
+								var middleX = Math.floor((startX + x) / 2);
+								transitionPoints.push(middleX);
+							}
+						} else if (startX != -1) {
+							// Koniec ciągłego segmentu, zapisz środek
+							var middleX = Math.floor((startX + (x - 1)) / 2);
+							transitionPoints.push(middleX);
+							startX = -1; // Reset dla nowego segmentu
 						}
 					}
 				}
 				
 			case "left":
 				// Wywołaj funkcję dla kierunku przeciwnego, zamieniając poziomy miejscami
-				hasTransition = hasValidTransition(toCollisionLayer, fromCollisionLayer, "right");
+				return getTransitionPoints(toCollisionLayer, fromCollisionLayer, "right");
 				
 			case "top":
 				// Wywołaj funkcję dla kierunku przeciwnego, zamieniając poziomy miejscami
-				hasTransition = hasValidTransition(toCollisionLayer, fromCollisionLayer, "bottom");
+				return getTransitionPoints(toCollisionLayer, fromCollisionLayer, "bottom");
 		}
 		
-		return hasTransition;
+		// Jeśli nie znaleziono przejścia, zwróć pustą listę
+		return transitionPoints;
+	}
+
+	function hasValidTransition(fromCollisionLayer:Array<Array<Int>>, toCollisionLayer:Array<Array<Int>>, direction:String) {
+		// Wykorzystanie nowej funkcji getTransitionPoints
+		var points = getTransitionPoints(fromCollisionLayer, toCollisionLayer, direction);
+		return points.length > 0;
 	}
 
 	function updateProjectForm() {
@@ -389,7 +444,7 @@ class EditProject extends ui.modal.Panel {
 				case Capitalize: L.t._('"My_identifier_1" -- First letter is always uppercase, the rest is up to you');
 				case Uppercase: L.t._('"MY_IDENTIFIER_1" -- Full uppercase');
 				case Lowercase: L.t._('"my_identifier_1" -- Full lowercase');
-				case Free: L.t._('"my_IdEnTifIeR_1" -- I wON\'t cHaNge yOuR leTteR caSe');
+				case Free: L.t._('"my_IdEnTifIeR_1" -- I won\'t change your letter case');
 			}
 		);
 		i.customConfirm = (oldV,newV)->{
@@ -597,10 +652,13 @@ class EditProject extends ui.modal.Panel {
 							var fromCollisionLayer = currentLevel != null ? currentLevel.collisionLayer : null;
 							var toCollisionLayer = neighborLevel != null ? neighborLevel.collisionLayer : null;
 							
-							// Only create connection if transition is valid
-							if (hasValidTransition(fromCollisionLayer, toCollisionLayer, dir.name)) {
-								// Create transition node
-								var transitionId = currentId + "⎯" + neighborId + "⎯" + dir.name;
+							// Get all transition points instead of just checking if transition is valid
+							var transitionPoints = getTransitionPoints(fromCollisionLayer, toCollisionLayer, dir.name);
+							
+							// Create transition nodes for each transition point
+							for (position in transitionPoints) {
+								// Create transition node with position information
+								var transitionId = currentId + "⎯" + neighborId + "⎯" + dir.name + "⎯" + position;
 								nodeMap.set(transitionId, { id: transitionId, connections: new Map<String, Int>() });
 							}
 						}
@@ -615,10 +673,13 @@ class EditProject extends ui.modal.Panel {
 						var parts1 = nodeId1.split("⎯");
 						var parts2 = nodeId2.split("⎯");
 						
-						// Connect transitions if they share a level
-						if (parts1[0] == parts2[0] || parts1[0] == parts2[1] || 
-							parts1[1] == parts2[0] || parts1[1] == parts2[1]) {
-							node1.connections.set(nodeId2, 1);
+						// Only proceed if both are transition nodes (have at least 3 parts)
+						if (parts1.length >= 3 && parts2.length >= 3) {
+							// Connect transitions if they share a level
+							if (parts1[0] == parts2[0] || parts1[0] == parts2[1] || 
+								parts1[1] == parts2[0] || parts1[1] == parts2[1]) {
+								node1.connections.set(nodeId2, 1);
+							}
 						}
 					}
 				}
