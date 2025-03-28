@@ -444,7 +444,7 @@ class EditProject extends ui.modal.Panel {
 				case Capitalize: L.t._('"My_identifier_1" -- First letter is always uppercase, the rest is up to you');
 				case Uppercase: L.t._('"MY_IDENTIFIER_1" -- Full uppercase');
 				case Lowercase: L.t._('"my_identifier_1" -- Full lowercase');
-				case Free: L.t._('"my_IdEnTifIeR_1" -- I won\'t change your letter case');
+				case Free: L.t._('"my_IdEnTifIeR_1" -- I wON\'t cHaNge yOuR leTteR caSe');
 			}
 		);
 		i.customConfirm = (oldV,newV)->{
