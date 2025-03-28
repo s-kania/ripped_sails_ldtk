@@ -572,13 +572,6 @@ class EditProject extends ui.modal.Panel {
 				}
 			}
 
-			// Step 2: Create nodes for each grid position
-			for(x in 0...Std.int(maxGridX+1))
-			for(y in 0...Std.int(maxGridY+1)) {
-				var levelId = x + "_" + y;
-				nodeMap.set(levelId, { id: levelId, connections: new Map<String, Int>() });
-			}
-
 			// Step 3: Create valid connections between adjacent cells
 			for (x in 0...Std.int(maxGridX+1)) {
 				for (y in 0...Std.int(maxGridY+1)) {
@@ -609,21 +602,29 @@ class EditProject extends ui.modal.Panel {
 								// Create transition node
 								var transitionId = currentId + "⎯" + neighborId + "⎯" + dir.name;
 								nodeMap.set(transitionId, { id: transitionId, connections: new Map<String, Int>() });
-								
-								// Connect current level to transition point
-								nodeMap.get(currentId).connections.set(transitionId, 1);
-								nodeMap.get(transitionId).connections.set(currentId, 1);
-								
-								// Connect transition point to neighbor
-								nodeMap.get(transitionId).connections.set(neighborId, 1);
-								nodeMap.get(neighborId).connections.set(transitionId, 1);
 							}
 						}
 					}
 				}
 			}
 
-			// Step 4: Convert nodeMap to final format
+			// Step 4: Connect transitions that share levels
+			for (nodeId1 => node1 in nodeMap) {
+				for (nodeId2 => node2 in nodeMap) {
+					if (nodeId1 != nodeId2) {
+						var parts1 = nodeId1.split("⎯");
+						var parts2 = nodeId2.split("⎯");
+						
+						// Connect transitions if they share a level
+						if (parts1[0] == parts2[0] || parts1[0] == parts2[1] || 
+							parts1[1] == parts2[0] || parts1[1] == parts2[1]) {
+							node1.connections.set(nodeId2, 1);
+						}
+					}
+				}
+			}
+
+			// Step 5: Convert nodeMap to final format
 			for (node in nodeMap) {
 				var connections = [];
 				for (targetId => weight in node.connections) {
