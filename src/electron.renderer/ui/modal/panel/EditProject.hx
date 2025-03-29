@@ -160,16 +160,25 @@ class EditProject extends ui.modal.Panel {
 				// Iterujemy po całej wysokości
 				var startY = -1; // Początek ciągłego segmentu przejścia
 				
-				for (y in 0...fromCollisionLayer.length) {
+				// Zmieniona pętla na levelSize
+				for (y in 0...levelSize) {
 					// Sprawdź czy punkt na prawej krawędzi pierwszego poziomu jest przechodni (0)
-					var fromRightEdge = (y < fromCollisionLayer.length && 
-						fromCollisionLayer[y] != null && 
-						fromCollisionLayer[y][fromCollisionLayer[y].length - 1] == 0);
+					var fromRightEdge = 
+						fromCollisionLayer == null 
+						? true // Ocean jest zawsze przechodni
+						: (y < fromCollisionLayer.length && 
+							fromCollisionLayer[y] != null && 
+							fromCollisionLayer[y].length > 0 && // Upewnij się, że wiersz nie jest pusty
+							fromCollisionLayer[y][fromCollisionLayer[y].length - 1] == 0);
 					
 					// Sprawdź czy punkt na lewej krawędzi drugiego poziomu jest przechodni (0)
-					var toLeftEdge = (y < toCollisionLayer.length && 
-						toCollisionLayer[y] != null && 
-						toCollisionLayer[y][0] == 0);
+					var toLeftEdge = 
+						toCollisionLayer == null 
+						? true // Ocean jest zawsze przechodni
+						: (y < toCollisionLayer.length && 
+							toCollisionLayer[y] != null && 
+							toCollisionLayer[y].length > 0 && // Upewnij się, że wiersz nie jest pusty
+							toCollisionLayer[y][0] == 0);
 					
 					// Jeśli oba punkty są przechodnie, mamy przejście
 					if (fromRightEdge && toLeftEdge) {
@@ -177,8 +186,8 @@ class EditProject extends ui.modal.Panel {
 						if (startY == -1) {
 							startY = y;
 						}
-						// Jeśli to ostatni punkt, zapisz środek segmentu
-						if (y == fromCollisionLayer.length - 1 && startY != -1) {
+						// Jeśli to ostatni punkt (zaktualizowano warunek do levelSize), zapisz środek segmentu
+						if (y == levelSize - 1 && startY != -1) {
 							var middleY = Math.floor((startY + y) / 2);
 							transitionPoints.push(middleY);
 						}
@@ -192,38 +201,45 @@ class EditProject extends ui.modal.Panel {
 				
 			case "bottom":
 				// Sprawdzamy dolną granicę pierwszego poziomu i górną granicę drugiego poziomu
-				if (fromCollisionLayer.length > 0 && toCollisionLayer.length > 0) {
-					var width = fromCollisionLayer[0].length;
-					var startX = -1; // Początek ciągłego segmentu przejścia
-					
-					for (x in 0...width) {
-						// Sprawdź czy punkt na dolnej krawędzi pierwszego poziomu jest przechodni (0)
-						var fromBottomEdge = (fromCollisionLayer[fromCollisionLayer.length - 1] != null && 
-							x < fromCollisionLayer[fromCollisionLayer.length - 1].length && 
+				// Usunięto zewnętrzny warunek if sprawdzający czy oba collisionLayer istnieją
+				var startX = -1; // Początek ciągłego segmentu przejścia
+				
+				// Zmieniona pętla na levelSize
+				for (x in 0...levelSize) {
+					// Sprawdź czy punkt na dolnej krawędzi pierwszego poziomu jest przechodni (0)
+					var fromBottomEdge = 
+						fromCollisionLayer == null 
+						? true // Ocean jest zawsze przechodni
+						: (fromCollisionLayer.length > 0 && // Upewnij się, że jest co najmniej jeden wiersz
+							fromCollisionLayer[fromCollisionLayer.length - 1] != null && 
+							x < fromCollisionLayer[fromCollisionLayer.length - 1].length && // Sprawdź graniczniki X
 							fromCollisionLayer[fromCollisionLayer.length - 1][x] == 0);
-						
-						// Sprawdź czy punkt na górnej krawędzi drugiego poziomu jest przechodni (0)
-						var toTopEdge = (toCollisionLayer[0] != null && 
-							x < toCollisionLayer[0].length && 
+					
+					// Sprawdź czy punkt na górnej krawędzi drugiego poziomu jest przechodni (0)
+					var toTopEdge = 
+						toCollisionLayer == null 
+						? true // Ocean jest zawsze przechodni
+						: (toCollisionLayer.length > 0 && // Upewnij się, że jest co najmniej jeden wiersz
+							toCollisionLayer[0] != null && 
+							x < toCollisionLayer[0].length && // Sprawdź graniczniki X
 							toCollisionLayer[0][x] == 0);
-						
-						// Jeśli oba punkty są przechodnie, mamy przejście
-						if (fromBottomEdge && toTopEdge) {
-							// Jeśli to początek nowego segmentu
-							if (startX == -1) {
-								startX = x;
-							}
-							// Jeśli to ostatni punkt, zapisz środek segmentu
-							if (x == width - 1 && startX != -1) {
-								var middleX = Math.floor((startX + x) / 2);
-								transitionPoints.push(middleX);
-							}
-						} else if (startX != -1) {
-							// Koniec ciągłego segmentu, zapisz środek
-							var middleX = Math.floor((startX + (x - 1)) / 2);
-							transitionPoints.push(middleX);
-							startX = -1; // Reset dla nowego segmentu
+					
+					// Jeśli oba punkty są przechodnie, mamy przejście
+					if (fromBottomEdge && toTopEdge) {
+						// Jeśli to początek nowego segmentu
+						if (startX == -1) {
+							startX = x;
 						}
+						// Jeśli to ostatni punkt (zaktualizowano warunek do levelSize), zapisz środek segmentu
+						if (x == levelSize - 1 && startX != -1) {
+							var middleX = Math.floor((startX + x) / 2);
+							transitionPoints.push(middleX);
+						}
+					} else if (startX != -1) {
+						// Koniec ciągłego segmentu, zapisz środek
+						var middleX = Math.floor((startX + (x - 1)) / 2);
+						transitionPoints.push(middleX);
+						startX = -1; // Reset dla nowego segmentu
 					}
 				}
 				
@@ -590,7 +606,9 @@ class EditProject extends ui.modal.Panel {
 			var nodeMap = new Map<String, { id:String, connections:Map<String, Int> }>();
 			
 			// Find max grid coordinates and create level map
-			var levelSize:Float = 0;
+			var levelSize:Float = 0; // to jest szerokość poziomów na mapie świata, czyli np 5 x 5 poziomów
+			// Poprawka: Użyj danych z pierwszego świata i rzutuj na Int
+			var levelWidth:Int = Std.int(project.worlds[0].defaultLevelWidth / project.defaultGridSize);
 			var levelsByGridPos = new Map<String, data.Level>();
 			
 			// Step 1: Map levels and find grid boundaries
@@ -631,9 +649,11 @@ class EditProject extends ui.modal.Panel {
 							var toCollisionLayer = neighborLevel != null ? neighborLevel.collisionLayer : null;
 							
 							// Get all transition points instead of just checking if transition is valid
-							var transitionPoints = getTransitionPoints(fromCollisionLayer, toCollisionLayer, dir.name, project.defaultGridSize);
+							// Poprawka: Przekazujemy levelWidth, który jest teraz Int
+							var transitionPoints = getTransitionPoints(fromCollisionLayer, toCollisionLayer, dir.name, levelWidth);
 							
 							// Create transition nodes for each transition point
+							// Ten fragment powinien teraz działać, bo transitionPoints jest poprawnie typowane jako Array<Int>
 							for (position in transitionPoints) {
 								// Create transition node with position information
 								var transitionId = currentId + "⎯" + neighborId + "⎯" + dir.name + "⎯" + position;
