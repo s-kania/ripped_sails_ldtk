@@ -143,34 +143,14 @@ class EditProject extends ui.modal.Panel {
 		return coords.x + "_" + coords.y;
 	}
 
-	function getTransitionPoints(fromCollisionLayer:Array<Array<Int>>, toCollisionLayer:Array<Array<Int>>, direction:String):Array<Int> {
+	function getTransitionPoints(fromCollisionLayer:Array<Array<Int>>, toCollisionLayer:Array<Array<Int>>, direction:String, levelSize:Int):Array<Int> {
 		// Tablica przechowująca pozycje punktów przejścia
 		var transitionPoints:Array<Int> = [];
 		
-		// Jeśli którakolwiek warstwa nie istnieje, zwróć domyślny punkt przejścia na środku
-		if (fromCollisionLayer == null || toCollisionLayer == null) {
-			// Ustaw punkt pośrodku granicy
-			var middlePos = 0;
-			
-			if (direction == "right" || direction == "left") {
-				// Dla przejść poziomych, oblicz środek wysokości
-				var height = (fromCollisionLayer != null) ? fromCollisionLayer.length : 
-								(toCollisionLayer != null) ? toCollisionLayer.length : 16;
-				middlePos = Math.floor(height / 2);
-			} else { // "bottom" lub "top"
-				// Dla przejść pionowych, oblicz środek szerokości
-				var width = 0;
-				if (fromCollisionLayer != null && fromCollisionLayer.length > 0) {
-					width = fromCollisionLayer[0].length;
-				} else if (toCollisionLayer != null && toCollisionLayer.length > 0) {
-					width = toCollisionLayer[0].length;
-				} else {
-					width = 16; // Domyślna wartość
-				}
-				middlePos = Math.floor(width / 2);
-			}
-			
-			transitionPoints.push(middlePos);
+		// Jeśli oba poziomy są puste (oceany), ustaw domyślny punkt przejścia na środku
+		if (fromCollisionLayer == null && toCollisionLayer == null) {
+			// Używamy po prostu połowy rozmiaru poziomu jako punktu przejścia
+			transitionPoints.push(Std.int(levelSize / 2));
 			return transitionPoints;
 		}
 		
@@ -249,22 +229,22 @@ class EditProject extends ui.modal.Panel {
 				
 			case "left":
 				// Wywołaj funkcję dla kierunku przeciwnego, zamieniając poziomy miejscami
-				return getTransitionPoints(toCollisionLayer, fromCollisionLayer, "right");
+				return getTransitionPoints(toCollisionLayer, fromCollisionLayer, "right", levelSize);
 				
 			case "top":
 				// Wywołaj funkcję dla kierunku przeciwnego, zamieniając poziomy miejscami
-				return getTransitionPoints(toCollisionLayer, fromCollisionLayer, "bottom");
+				return getTransitionPoints(toCollisionLayer, fromCollisionLayer, "bottom", levelSize);
 		}
 		
 		// Jeśli nie znaleziono przejścia, zwróć pustą listę
 		return transitionPoints;
 	}
 
-	function hasValidTransition(fromCollisionLayer:Array<Array<Int>>, toCollisionLayer:Array<Array<Int>>, direction:String) {
-		// Wykorzystanie nowej funkcji getTransitionPoints
-		var points = getTransitionPoints(fromCollisionLayer, toCollisionLayer, direction);
-		return points.length > 0;
-	}
+	// function hasValidTransition(fromCollisionLayer:Array<Array<Int>>, toCollisionLayer:Array<Array<Int>>, direction:String):Bool {
+	// 	// Wykorzystanie nowej funkcji getTransitionPoints
+	// 	var points = getTransitionPoints(fromCollisionLayer, toCollisionLayer, direction, project.defaultGridSize);
+	// 	return points.length > 0;
+	// }
 
 	function updateProjectForm() {
 		ui.Tip.clear();
@@ -610,8 +590,7 @@ class EditProject extends ui.modal.Panel {
 			var nodeMap = new Map<String, { id:String, connections:Map<String, Int> }>();
 			
 			// Find max grid coordinates and create level map
-			var maxGridX:Float = 0;
-			var maxGridY:Float = 0;
+			var levelSize:Float = 0;
 			var levelsByGridPos = new Map<String, data.Level>();
 			
 			// Step 1: Map levels and find grid boundaries
@@ -619,8 +598,7 @@ class EditProject extends ui.modal.Panel {
 				for(l in w.levels) {
 					var gridCoords = extractGridCoords(l.identifier);
 					if(gridCoords != null) {
-						maxGridX = Math.max(maxGridX, gridCoords.x);
-						maxGridY = Math.max(maxGridY, gridCoords.y);
+						levelSize = Math.max(levelSize, gridCoords.x);
 						var gridKey = Std.int(gridCoords.x) + "_" + Std.int(gridCoords.y);
 						levelsByGridPos.set(gridKey, l);
 					}
@@ -628,8 +606,8 @@ class EditProject extends ui.modal.Panel {
 			}
 
 			// Step 3: Create valid connections between adjacent cells
-			for (x in 0...Std.int(maxGridX+1)) {
-				for (y in 0...Std.int(maxGridY+1)) {
+			for (x in 0...Std.int(levelSize+1)) {
+				for (y in 0...Std.int(levelSize+1)) {
 					var currentId = x + "_" + y;
 					var currentLevel = levelsByGridPos.get(currentId);
 					
@@ -644,7 +622,7 @@ class EditProject extends ui.modal.Panel {
 						var ny = y + dir.dy;
 						
 						// Check if neighbor is within grid bounds
-						if (nx <= maxGridX && ny <= maxGridY) {
+						if (nx <= levelSize && ny <= levelSize) {
 							var neighborId = nx + "_" + ny;
 							var neighborLevel = levelsByGridPos.get(neighborId);
 							
@@ -653,7 +631,7 @@ class EditProject extends ui.modal.Panel {
 							var toCollisionLayer = neighborLevel != null ? neighborLevel.collisionLayer : null;
 							
 							// Get all transition points instead of just checking if transition is valid
-							var transitionPoints = getTransitionPoints(fromCollisionLayer, toCollisionLayer, dir.name);
+							var transitionPoints = getTransitionPoints(fromCollisionLayer, toCollisionLayer, dir.name, project.defaultGridSize);
 							
 							// Create transition nodes for each transition point
 							for (position in transitionPoints) {

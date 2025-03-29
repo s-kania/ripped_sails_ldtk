@@ -1135,30 +1135,35 @@ class WorldRender extends dn.Process {
 				return pos;
 			}
 			
-			// Sprawdź czy węzeł to przejście (format: X_Y\u23AFX_Y\u23AFdirection)
-			// Znak "\u23AF" to znak Unicode używany w identyfikatorach (długa kreska pozioma)
-			var transitionRegex = ~/([0-9]+)_([0-9]+)[\u23AF⎯]([0-9]+)_([0-9]+)[\u23AF⎯](right|bottom)/;
+			// Sprawdź czy węzeł to przejście (format: X_Y⎯X_Y⎯direction⎯position)
+			// Znak "⎯" to znak Unicode używany w identyfikatorach (długa kreska pozioma)
+			var transitionRegex = ~/([0-9]+)_([0-9]+)[\u23AF\u23af]([0-9]+)_([0-9]+)[\u23AF\u23af](right|bottom)[\u23AF\u23af]([0-9]+)/;
 			if (transitionRegex.match(nodeId)) {
 				var fromX = Std.parseInt(transitionRegex.matched(1));
 				var fromY = Std.parseInt(transitionRegex.matched(2));
 				var toX = Std.parseInt(transitionRegex.matched(3));
 				var toY = Std.parseInt(transitionRegex.matched(4));
 				var direction = transitionRegex.matched(5);
+				var positionInGrids = Std.parseInt(transitionRegex.matched(6));
 				
-				// Oblicz pozycje węzłów poziomu
-				var fromPos = getPositionFromCoords(fromX, fromY);
-				var toPos = getPositionFromCoords(toX, toY);
+				// Konwersja pozycji z jednostek gridu na piksele
+				var gridSize = project.defaultGridSize;
+				var positionInPixels = positionInGrids * gridSize;
 				
-				// Oblicz pozycję węzła przejścia na podstawie kierunku
+				// Oblicz pozycję węzła przejścia na podstawie kierunku i pozycji
 				var transitionPos = {x: 0.0, y: 0.0};
 				
 				if (direction == "right") {
 					// Przejście w prawo - na granicy między poziomami na osi X
 					transitionPos.x = worldOffsetX + (fromX * levelWidth) + levelWidth;
-					transitionPos.y = fromPos.y; // Ta sama wysokość co poziom źródłowy
+					
+					// Position to współrzędna Y względem górnej krawędzi poziomu
+					transitionPos.y = worldOffsetY + (fromY * levelHeight) + positionInPixels;
 				} else if (direction == "bottom") {
 					// Przejście w dół - na granicy między poziomami na osi Y
-					transitionPos.x = fromPos.x; // Ta sama szerokość co poziom źródłowy
+					
+					// Position to współrzędna X względem lewej krawędzi poziomu
+					transitionPos.x = worldOffsetX + (fromX * levelWidth) + positionInPixels;
 					transitionPos.y = worldOffsetY + (fromY * levelHeight) + levelHeight;
 				}
 				
