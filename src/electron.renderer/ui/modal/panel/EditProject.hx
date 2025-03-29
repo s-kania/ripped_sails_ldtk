@@ -188,12 +188,14 @@ class EditProject extends ui.modal.Panel {
 						}
 						// Jeśli to ostatni punkt (zaktualizowano warunek do levelSize), zapisz środek segmentu
 						if (y == levelSize - 1 && startY != -1) {
-							var middleY = Math.floor((startY + y) / 2);
+							// Zmiana na Math.round
+							var middleY = Math.round((startY + y) / 2);
 							transitionPoints.push(middleY);
 						}
 					} else if (startY != -1) {
 						// Koniec ciągłego segmentu, zapisz środek
-						var middleY = Math.floor((startY + (y - 1)) / 2);
+						// Zmiana na Math.round
+						var middleY = Math.round((startY + (y - 1)) / 2);
 						transitionPoints.push(middleY);
 						startY = -1; // Reset dla nowego segmentu
 					}
@@ -232,12 +234,14 @@ class EditProject extends ui.modal.Panel {
 						}
 						// Jeśli to ostatni punkt (zaktualizowano warunek do levelSize), zapisz środek segmentu
 						if (x == levelSize - 1 && startX != -1) {
-							var middleX = Math.floor((startX + x) / 2);
+							// Zmiana na Math.round
+							var middleX = Math.round((startX + x) / 2);
 							transitionPoints.push(middleX);
 						}
 					} else if (startX != -1) {
 						// Koniec ciągłego segmentu, zapisz środek
-						var middleX = Math.floor((startX + (x - 1)) / 2);
+						// Zmiana na Math.round
+						var middleX = Math.round((startX + (x - 1)) / 2);
 						transitionPoints.push(middleX);
 						startX = -1; // Reset dla nowego segmentu
 					}
