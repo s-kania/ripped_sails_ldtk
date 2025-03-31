@@ -264,11 +264,234 @@ class EditProject extends ui.modal.Panel {
 		return transitionPoints;
 	}
 
-	// function hasValidTransition(fromCollisionLayer:Array<Array<Int>>, toCollisionLayer:Array<Array<Int>>, direction:String):Bool {
-	// 	// Wykorzystanie nowej funkcji getTransitionPoints
-	// 	var points = getTransitionPoints(fromCollisionLayer, toCollisionLayer, direction, project.defaultGridSize);
-	// 	return points.length > 0;
-	// }
+	
+	// ==========================================================================================
+	// PATHFINDING HELPERS
+	// ==========================================================================================
+
+	/**
+	 * Finds other transition nodes reachable from the given currentNodeId
+	 * by checking for A* paths on the two levels connected by currentNodeId.
+	 * Updates the 'connections' map for both the current node and the found neighbors
+	 * directly within the main nodeMap.
+	 */
+	 	/**
+	 * Finds other transition nodes reachable from the given currentNodeId
+	 * by checking for A* paths on the two levels connected by currentNodeId.
+	 * Updates the 'connections' map for both the current node and the found neighbors
+	 * directly within the main nodeMap.
+	 */
+	 private function findAndAddConnectionsForNode(
+		currentNodeId:String,
+		nodeMap:Map<String, {id:String, connections:Map<String, Int>}>,
+		levelsByGridPos:Map<String, data.Level>,
+		levelWidth:Int
+	):Void {
+		// Parsowanie ID bez zmian
+		var parts = currentNodeId.split("⎯");
+		if (parts.length != 4) {
+			trace('Error: Invalid currentNodeId format: $currentNodeId');
+			return;
+		}
+		var levelA_ID = parts[0];
+		var levelB_ID = parts[1];
+		var direction = parts[2];
+		var position = Std.parseInt(parts[3]);
+	
+		if (position == null) {
+			trace('Error: Invalid position in currentNodeId: $currentNodeId');
+			return;
+		}
+	
+		var nodeInfo = nodeMap.get(currentNodeId);
+		if (nodeInfo == null) {
+			trace('Error: Node info not found for $currentNodeId in nodeMap');
+			return;
+		}
+	
+		// Pobieranie poziomów
+		var levelA = levelsByGridPos.get(levelA_ID);
+		var levelB = levelsByGridPos.get(levelB_ID);
+	
+		// Sprawdzanie poziomów
+		if (levelA == null) {
+			trace('Warning: Level A ($levelA_ID) not found for node $currentNodeId');
+		}
+		if (levelB == null) {
+			trace('Warning: Level B ($levelB_ID) not found for node $currentNodeId');
+		}
+	
+		// Ustalenie wysokości poziomów (prawdopodobnie z project.defaultGridSize lub z innego źródła)
+		var levelHeight = levelWidth; // Zakładam, że poziomy są kwadratowe, dostosuj to jeśli potrzeba
+	
+		// Sprawdzanie połączeń na Level A
+		if (levelA != null) {
+			var coordsA = getCoordsFromNodeId(currentNodeId, levelA_ID, levelWidth, levelHeight);
+			if (coordsA != null) {
+				checkConnectionsOnLevel(levelA_ID, levelA, currentNodeId, coordsA, nodeInfo, nodeMap, levelsByGridPos, levelWidth, levelHeight);
+			} else {
+				trace('Error: Could not calculate coordinates for $currentNodeId on level $levelA_ID');
+			}
+		}
+	
+		// Sprawdzanie połączeń na Level B
+		if (levelB != null) {
+			var coordsB = getCoordsFromNodeId(currentNodeId, levelB_ID, levelWidth, levelHeight);
+			if (coordsB != null) {
+				checkConnectionsOnLevel(levelB_ID, levelB, currentNodeId, coordsB, nodeInfo, nodeMap, levelsByGridPos, levelWidth, levelHeight);
+			} else {
+				trace('Error: Could not calculate coordinates for $currentNodeId on level $levelB_ID');
+			}
+		}
+	}
+
+
+	/**
+	 * Checks for connections between the current node and all other nodes
+	 * that share the specified target level. Updates connections maps directly.
+	 */
+	 private function checkConnectionsOnLevel(
+		targetLevelId:String, 
+		targetLevel:data.Level,
+		currentNodeId:String,
+		currentNodeCoords:{x:Int, y:Int},
+		nodeInfo:{id:String, connections:Map<String, Int>},
+		nodeMap:Map<String, {id:String, connections:Map<String, Int>}>,
+		levelsByGridPos:Map<String, data.Level>,
+		levelWidth:Int,
+		levelHeight:Int
+	):Void {
+		// 1. Pobierz warstwę kolizji i sprawdź czy to poziom "ocean"
+		var collisionLayer = targetLevel.collisionLayer;
+		var isOceanLevel = (collisionLayer == null || collisionLayer.length == 0);
+	
+		// 2. Iteracja przez wszystkie inne potencjalne cele połączenia
+		for (otherNodeId => otherNodeInfo in nodeMap) {
+			if (otherNodeId == currentNodeId) continue;
+	
+			// 3. Parsowanie ID drugiego węzła
+			var otherParts = otherNodeId.split("⎯");
+			if (otherParts.length != 4) continue;
+	
+			var otherLevelA = otherParts[0];
+			var otherLevelB = otherParts[1];
+	
+			// 4. Sprawdź czy drugi węzeł jest związany z targetLevelId
+			if (otherLevelA != targetLevelId && otherLevelB != targetLevelId) {
+				continue;
+			}
+	
+			// 5. Oblicz współrzędne drugiego węzła NA TYM poziomie
+			var otherNodeCoords = getCoordsFromNodeId(otherNodeId, targetLevelId, levelWidth, levelHeight);
+			if (otherNodeCoords == null) {
+				continue;
+			}
+	
+			// 6. Sprawdź czy istnieje ścieżka
+			var hasPath = false;
+			if (isOceanLevel) {
+				// Poziomy "ocean" automatycznie łączą wszystkie punkty
+				hasPath = true;
+			} else {
+				// Sprawdź czy pozycje są w granicach mapy i nie są zablokowane
+				if (isValidPosition(currentNodeCoords.x, currentNodeCoords.y, collisionLayer) &&
+					isValidPosition(otherNodeCoords.x, otherNodeCoords.y, collisionLayer)) {
+					
+					// Użyj klasy AStar do znalezienia ścieżki
+					var path = utils.AStar.findPath(
+						collisionLayer,
+						{ x: currentNodeCoords.x, y: currentNodeCoords.y },
+						{ x: otherNodeCoords.x, y: otherNodeCoords.y }
+					);
+					
+					// Jeśli znaleziono ścieżkę, hasPath = true
+					hasPath = (path != null && path.length > 0);
+				}
+			}
+	
+			// 7. Dodaj dwukierunkowe połączenie jeśli istnieje ścieżka
+			if (hasPath) {
+				nodeInfo.connections.set(otherNodeId, 1);
+				otherNodeInfo.connections.set(currentNodeId, 1);
+			}
+		}
+	}
+	
+	// Pomocnicza funkcja do sprawdzania, czy dana pozycja jest legalna na mapie kolizji
+	private function isValidPosition(x:Int, y:Int, collisionLayer:Array<Array<Int>>):Bool {
+		if (collisionLayer == null) return false;
+		if (y < 0 || y >= collisionLayer.length) return false;
+		if (x < 0 || x >= collisionLayer[y].length) return false;
+		
+		// Wartość 0 zazwyczaj oznacza brak kolizji, ale to może zależeć od implementacji mapy kolizji
+		return collisionLayer[y][x] == 0;
+	}
+
+	/**
+	 * Calculates grid coordinates (x,y) from a node ID based on level dimensions and transition direction.
+	 *
+	 * @param nodeId The transition node ID (format: "levelA⎯levelB⎯direction⎯position")
+	 * @param onLevelId Which level's perspective to use (must match either levelA or levelB in nodeId)
+	 * @param levelWidth Width of the level in grid cells
+	 * @param levelHeight Height of the level in grid cells
+	 * @return Coordinates or null if calculation fails
+	 */
+	 private function getCoordsFromNodeId(
+		nodeId:String,
+		onLevelId:String,
+		levelWidth:Int,
+		levelHeight:Int
+	):Null<{x:Int, y:Int}> {
+		var parts = nodeId.split("⎯");
+		if (parts.length != 4) {
+			trace('Error getCoords: Invalid node ID format: $nodeId');
+			return null;
+		}
+
+		var levelA_ID = parts[0];
+		var levelB_ID = parts[1];
+		var direction = parts[2]; // Expecting "bottom" or "right"
+		var position = Std.parseInt(parts[3]);
+
+		if (position == null) {
+			trace('Error getCoords: Invalid position in node ID: $nodeId');
+			return null;
+		}
+
+		// Check if the target level ID is actually part of this transition
+		if (onLevelId != levelA_ID && onLevelId != levelB_ID) {
+			trace('Error getCoords: Target level $onLevelId is not part of transition $nodeId');
+			return null;
+		}
+
+		// Determine if we are calculating coordinates from the perspective of the 'source' level (levelA)
+		var isSourceLevelPerspective = (onLevelId == levelA_ID);
+
+		// Calculate coordinates based on direction and perspective
+		switch (direction.toLowerCase()) {
+			case "bottom": // Transition is along the bottom edge of levelA / top edge of levelB
+				if (isSourceLevelPerspective) {
+					// On Level A (source), point is at the bottom edge
+					return { x: position, y: levelHeight - 1 };
+				} else {
+					// On Level B (destination), point is at the top edge
+					return { x: position, y: 0 };
+				}
+
+			case "right": // Transition is along the right edge of levelA / left edge of levelB
+				if (isSourceLevelPerspective) {
+					// On Level A (source), point is at the right edge
+					return { x: levelWidth - 1, y: position };
+				} else {
+					// On Level B (destination), point is at the left edge
+					return { x: 0, y: position };
+				}
+
+			default:
+				trace('Error getCoords: Unknown direction "$direction" in node ID: $nodeId');
+				return null; // Unknown or unsupported direction
+		}
+	}
 
 	/**
 	 * Parses a transition node ID (e.g., "0_0⎯0_1⎯bottom⎯16") and returns 
@@ -768,16 +991,10 @@ class EditProject extends ui.modal.Panel {
 				}
 			}
 
-			// Step 4: Connect transitions that share levels using A* validation
-			for (nodeId1 => node1 in nodeMap) {
-				for (nodeId2 => node2 in nodeMap) {
-					if (nodeId1 != nodeId2) {
-						// Check connectivity using the helper function
-						if (hasPathBetweenTransitions(nodeId1, nodeId2, levelsByGridPos, levelWidth)) {
-							node1.connections.set(nodeId2, 1);
-						}
-					}
-				}
+			for (currentNodeId => nodeInfo in nodeMap) {
+				// Example currentNodeId: "5_0⎯5_1⎯bottom⎯16"
+				// Find all other nodes connected to this one via shared levels and A* pathfinding.
+				findAndAddConnectionsForNode(currentNodeId, nodeMap, levelsByGridPos, levelWidth);
 			}
 
 			// Step 5: Convert nodeMap to final format
