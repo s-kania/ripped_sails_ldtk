@@ -270,6 +270,102 @@ class EditProject extends ui.modal.Panel {
 	// 	return points.length > 0;
 	// }
 
+	/**
+	 * Parses a transition node ID (e.g., "0_0⎯0_1⎯bottom⎯16") and returns 
+	 * its corresponding point coordinates on the level grid.
+	 * Returns null if parsing fails.
+	 */
+	private function parseTransitionNodeToPoint(nodeId:String, levelGridSize:Int):Point {
+		var parts = nodeId.split("⎯");
+		if (parts.length < 4) {
+			trace('Error: Invalid transition node ID format: $nodeId');
+			return null;
+		}
+
+		var direction = parts[2];
+		var positionStr = parts[3];
+		var position = Std.parseInt(positionStr);
+
+		if (position == null) {
+			trace('Error: Failed to parse position from node ID: $nodeId');
+			return null;
+		}
+
+		// Convert direction and position along edge to {x, y} grid coordinates
+		switch (direction) {
+			case "top":    return { x: position, y: 0 };
+			case "bottom": return { x: position, y: levelGridSize - 1 };
+			case "left":   return { x: 0, y: position };
+			case "right":  return { x: levelGridSize - 1, y: position };
+			default:       
+				trace('Error: Unknown direction in node ID: $nodeId');
+				return null; 
+		}
+	}
+
+	/**
+	 * Checks if a direct connection should be made between two transition nodes 
+	 * based on A* pathfinding on the shared level's collision map.
+	 * Returns true if they share a level and (a path exists OR the level has no collision map), 
+	 * false otherwise.
+	 */
+	private function hasPathBetweenTransitions(nodeId1:String, nodeId2:String, levelsByGridPos:Map<String, data.Level>, levelGridSize:Int):Bool {
+		var parts1 = nodeId1.split("⎯");
+		var parts2 = nodeId2.split("⎯");
+
+		// Basic validation
+		if (parts1.length < 4 || parts2.length < 4) {
+			return false; 
+		}
+
+		// Find the ID of the level they potentially share
+		var sharedLevelId:String = null;
+		if (parts1[0] == parts2[0] || parts1[0] == parts2[1]) { 
+			sharedLevelId = parts1[0];
+		} else if (parts1[1] == parts2[0] || parts1[1] == parts2[1]) {
+			sharedLevelId = parts1[1];
+		} else {
+			 return false; // Don't share a potential connection level
+		}
+
+		// Get the level data
+		var level = levelsByGridPos.get(sharedLevelId);
+		if (level == null) {
+			 trace('Warning: Shared level ID $sharedLevelId not found in levelsByGridPos map.');
+			 return false; 
+		}
+
+		// Get collision data
+		var collisionLayer = level.collisionLayer;
+
+		// If no collision layer exists (e.g., ocean level), consider them connected
+		if (collisionLayer == null) {
+			return true; 
+		}
+
+		// Parse node IDs to start/end points on the grid
+		var startPoint = parseTransitionNodeToPoint(nodeId1, levelGridSize);
+		var endPoint = parseTransitionNodeToPoint(nodeId2, levelGridSize);
+
+		if (startPoint == null || endPoint == null) {
+			// Error already traced in parseTransitionNodeToPoint
+			return false;
+		}
+		
+		// Ensure points are within bounds (A* might also check this)
+		if (startPoint.x < 0 || startPoint.x >= levelGridSize || startPoint.y < 0 || startPoint.y >= levelGridSize ||
+			endPoint.x < 0 || endPoint.x >= levelGridSize || endPoint.y < 0 || endPoint.y >= levelGridSize) {
+			trace('Warning: Start or end point out of bounds for A* check on level $sharedLevelId');
+			return false;
+		}
+
+		// Perform A* pathfinding
+		var path = AStar.findPath(collisionLayer, startPoint, endPoint);
+		trace(path);
+		// Return true if A* found a path
+		return (path != null);
+	}
+
 	function updateProjectForm() {
 		ui.Tip.clear();
 		var jForms = jContent.find("dl.form");
@@ -672,20 +768,13 @@ class EditProject extends ui.modal.Panel {
 				}
 			}
 
-			// Step 4: Connect transitions that share levels
+			// Step 4: Connect transitions that share levels using A* validation
 			for (nodeId1 => node1 in nodeMap) {
 				for (nodeId2 => node2 in nodeMap) {
 					if (nodeId1 != nodeId2) {
-						var parts1 = nodeId1.split("⎯");
-						var parts2 = nodeId2.split("⎯");
-						
-						// Only proceed if both are transition nodes (have at least 3 parts)
-						if (parts1.length >= 3 && parts2.length >= 3) {
-							// Connect transitions if they share a level
-							if (parts1[0] == parts2[0] || parts1[0] == parts2[1] || 
-								parts1[1] == parts2[0] || parts1[1] == parts2[1]) {
-								node1.connections.set(nodeId2, 1);
-							}
+						// Check connectivity using the helper function
+						if (hasPathBetweenTransitions(nodeId1, nodeId2, levelsByGridPos, levelWidth)) {
+							node1.connections.set(nodeId2, 1);
 						}
 					}
 				}
@@ -710,42 +799,41 @@ class EditProject extends ui.modal.Panel {
 
 			// --- A* Test Start ---
 			// TEMPORARILY COMMENTED OUT FOR DEBUGGING
-			var testGrid: Array<Array<Int>> = [
-				[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
-				[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
-				[1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1],
-				[1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1],
-				[1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,0,0,0,0,1,1,1,1,1],
-				[1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,0,0,0,0,1,1,1,1,1],
-				[1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,0,0,0,0,1,1,1,1,1],
-				[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1],
-				[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1],
-				[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1],
-				[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1],
-				[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1],
-				[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1],
-				[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1],
-				[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1],
-				[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1],
-				[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
-				[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
-			];
-			var startPoint: Point = { x: 2, y: 2 };
-			var endPoint: Point = { x: 24, y: 4 };
+			// var testGrid: Array<Array<Int>> = [
+			// 	[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+			// 	[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+			// 	[1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1],
+			// 	[1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1],
+			// 	[1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,0,0,0,0,1,1,1,1,1],
+			// 	[1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,0,0,0,0,1,1,1,1,1],
+			// 	[1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,0,0,0,0,1,1,1,1,1],
+			// 	[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1],
+			// 	[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1],
+			// 	[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1],
+			// 	[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1],
+			// 	[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1],
+			// 	[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1],
+			// 	[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1],
+			// 	[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1],
+			// 	[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+			// 	[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+			// ];
+			// var startPoint: Point = { x: 2, y: 2 };
+			// var endPoint: Point = { x: 24, y: 4 };
 
-			trace('Grid dimensions: ${testGrid.length}x${testGrid[0].length}');
-			trace('Start point: ${startPoint.x},${startPoint.y}');
-			trace('End point: ${endPoint.x},${endPoint.y}');
-			var path = AStar.findPath(testGrid, startPoint, endPoint);
+			// trace('Grid dimensions: ${testGrid.length}x${testGrid[0].length}');
+			// trace('Start point: ${startPoint.x},${startPoint.y}');
+			// trace('End point: ${endPoint.x},${endPoint.y}');
+			// var path = AStar.findPath(testGrid, startPoint, endPoint);
 
-			if (path != null) {
-				trace("Path found:");
-				for (p in path) {
-					trace('- (${p.x}, ${p.y})');
-				}
-			} else {
-				trace("Path not found");
-			}
+			// if (path != null) {
+			// 	trace("Path found:");
+			// 	for (p in path) {
+			// 		trace('- (${p.x}, ${p.y})');
+			// 	}
+			// } else {
+			// 	trace("Path not found");
+			// }
 			// --- A* Test End ---
 
 			// Update project

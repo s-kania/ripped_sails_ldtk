@@ -1,6 +1,8 @@
 package display;
 
 import misc.WorldRect;
+import ui.Tip;
+import h2d.Interactive;
 
 typedef WorldLevelRender = {
 	var worldIid : String;
@@ -1045,13 +1047,15 @@ class WorldRender extends dn.Process {
 		connectionsWrapper.removeChildren();
 		connectionsWrapper.visible = true;
 		
-		// Create a new graphics object for connections
+		// Create a new graphics object for lines (connections)
 		var g = new h2d.Graphics(connectionsWrapper);
 		
 		// Calculate appropriate line thickness based on zoom level
 		var zoomScale = 1 / camera.adjustedZoom;
 		var lineThickness = Math.max(1, 2 * zoomScale);
-		
+		var pointRadius = 3 * zoomScale;
+		var levelPointRadius = 4 * zoomScale;
+
 		// Sprawdzamy czy istnieje struktura pathfindingPaths i jej węzły
 		if (project.pathfindingPaths == null || project.pathfindingPaths.nodes == null || project.pathfindingPaths.nodes.length == 0) {
 			return;
@@ -1126,7 +1130,7 @@ class WorldRender extends dn.Process {
 			}
 			
 			// Sprawdź czy węzeł to poziom (format: X_Y)
-			var levelRegex = ~/^([0-9]+)_([0-9]+)$/;
+			var levelRegex = ~/^([0-9]+)_([0-9]+)$/g;
 			if (levelRegex.match(nodeId)) {
 				var x = Std.parseInt(levelRegex.matched(1));
 				var y = Std.parseInt(levelRegex.matched(2));
@@ -1137,7 +1141,7 @@ class WorldRender extends dn.Process {
 			
 			// Sprawdź czy węzeł to przejście (format: X_Y⎯X_Y⎯direction⎯position)
 			// Znak "⎯" to znak Unicode używany w identyfikatorach (długa kreska pozioma)
-			var transitionRegex = ~/([0-9]+)_([0-9]+)[\u23AF\u23af]([0-9]+)_([0-9]+)[\u23AF\u23af](right|bottom)[\u23AF\u23af]([0-9]+)/;
+			var transitionRegex = ~/([0-9]+)_([0-9]+)[\u23AF\u23af]([0-9]+)_([0-9]+)[\u23AF\u23af](right|bottom)[\u23AF\u23af]([0-9]+)/g;
 			if (transitionRegex.match(nodeId)) {
 				var fromX = Std.parseInt(transitionRegex.matched(1));
 				var fromY = Std.parseInt(transitionRegex.matched(2));
@@ -1175,6 +1179,16 @@ class WorldRender extends dn.Process {
 			return null;
 		}
 		
+		// Helper to create tooltip text
+		function createTooltipText(node:Dynamic):String {
+			var text = 'ID: ${node.id}';
+			if (node.connections != null && node.connections.length > 0) {
+				text += '\nConnections:\n - '; // Add a newline and initial bullet point
+				text += (cast(node.connections, Array<Dynamic>)).join('\n - ');
+			}
+			return text;
+		}
+		
 		// 3. Przetworzenie wszystkich węzłów i ich pozycji
 		for (node in cast(project.pathfindingPaths.nodes, Array<Dynamic>)) {
 			var nodeId = node.id;
@@ -1186,37 +1200,97 @@ class WorldRender extends dn.Process {
 			
 			// Narysuj punkt dla węzła z odpowiednim kolorem i rozmiarem
 			if (isTransition) {
-				// Węzeł przejścia - pomarańczowy, mniejszy
-				g.beginFill(0xFF9900);
-				g.lineStyle(0);
-				g.drawCircle(nodePos.x, nodePos.y, 3 * zoomScale);
-				g.endFill();
+				// Węzeł przejścia - pomarańczowy, mniejszy, interaktywny
+				var point = new Interactive(pointRadius * 4, pointRadius * 4, connectionsWrapper);
+				point.x = nodePos.x - pointRadius * 2;
+				point.y = nodePos.y - pointRadius * 2;
+				point.cursor = Button;
+				
+				var gPoint = new h2d.Graphics(point);
+				gPoint.beginFill(0xFF9900);
+				gPoint.lineStyle(0);
+				gPoint.drawCircle(pointRadius * 2, pointRadius * 2, pointRadius);
+				gPoint.endFill();
+				
+				// Zapamiętaj oryginalny rozmiar punktu
+				var originalRadius = pointRadius;
+				var enlargedRadius = pointRadius * 1.5; // 50% większy przy najechaniu
+				
+				// Dodaj informacje o węźle jako właściwość
+				untyped point.nodeData = node;
+				
+				point.onOver = (ev) -> {
+					// 1. Powiększ punkt
+					gPoint.clear();
+					gPoint.beginFill(0xFF9900);
+					gPoint.lineStyle(1, 0xFFFFFF); // Dodaj białą obwódkę
+					gPoint.drawCircle(pointRadius * 2, pointRadius * 2, enlargedRadius);
+					gPoint.endFill();
+					
+					// 2. Pokaż tooltip
+					try {
+						var info = 'ID: ${node.id}';
+						if (node.connections != null && node.connections.length > 0) {
+							info += '\nConnections:\n';
+							for (conn in cast(node.connections, Array<Dynamic>)) {
+								// Kau017cde pou0142u0105czenie to obiekt z polami nodeId i weight
+								if (Reflect.hasField(conn, "nodeId")) {
+									info += ' - ' + Std.string(Reflect.field(conn, "nodeId")) + '\n';
+								} else {
+									// Fallback w przypadku innej struktury
+									info += ' - ' + Std.string(conn) + '\n';
+								}
+							}
+						}
+						
+						// Uu017cyj ostatniej znanej pozycji myszy z App.ME
+						var px = App.ME.lastKnownMouse.pageX + 10;
+						var py = App.ME.lastKnownMouse.pageY + 10;
+						Tip.simpleTip(px, py, info);
+					} catch(e) {
+						App.LOG.error('Tooltip error: ' + e);
+					}
+				}
+				
+				point.onOut = (_) -> {
+					// 1. Przywróć oryginalny rozmiar
+					gPoint.clear();
+					gPoint.beginFill(0xFF9900);
+					gPoint.lineStyle(0);
+					gPoint.drawCircle(pointRadius * 2, pointRadius * 2, originalRadius);
+					gPoint.endFill();
+					
+					// 2. Ukryj tooltip
+					Tip.clear();
+				}
+				
+				// Dodanie obsługi kliknięcia (opcjonalnie)
+				point.onClick = (_) -> {
+					// Opcjonalnie: wyświetl szczegóły w konsoli przy kliknięciu
+					App.LOG.general('Clicked node: ${node.id}');
+				}
 			} else {
 				// Węzeł poziomu - zielony, większy
 				g.beginFill(0x33CC33);
 				g.lineStyle(0);
-				g.drawCircle(nodePos.x, nodePos.y, 4 * zoomScale);
+				g.drawCircle(nodePos.x, nodePos.y, levelPointRadius);
 				g.endFill();
 			}
 			
-			// Narysuj połączenia do innych węzłów
-			var connections = node.connections;
-			for (connId in Reflect.fields(connections)) {
-				var connPos = getNodePosition(connId);
-				if (connPos == null) continue;
-				
-				// Wybierz kolor linii w zależności od typów połączonych węzłów
-				var lineColor = 0x3399FF; // Kolor domyślny (niebieski)
-				
-				// Ustaw kolor linii w zależności od typu węzła
-				if (isTransition) {
-					lineColor = 0xAAAAAA; // Szary dla połączeń z węzłami przejścia
+			// 4. Narysuj połączenia (linie)
+			if (node.connections != null) {
+				for (connectedNodeId in cast(node.connections, Array<Dynamic>)) {
+					var connectedNodePos = getNodePosition(connectedNodeId);
+					if (connectedNodePos != null) {
+						// Rysuj linię tylko raz (np. od węzła A do B, ale nie od B do A)
+						// Prosty sposób to rysowanie tylko jeśli ID bieżącego węzła jest "mniejsze" od połączonego
+						if (nodeId < connectedNodeId) {
+							g.lineStyle(lineThickness, 0xCCCCCC, 0.7);
+							g.moveTo(nodePos.x, nodePos.y);
+							g.lineTo(connectedNodePos.x, connectedNodePos.y);
+						}
+					}
 				}
-				
-				// Narysuj linię między węzłami
-				g.lineStyle(lineThickness, lineColor);
-				g.moveTo(nodePos.x, nodePos.y);
-				g.lineTo(connPos.x, connPos.y);
 			}
 		}
 	}
