@@ -283,7 +283,7 @@ class EditProject extends ui.modal.Panel {
 	 */
 	 private function findAndAddConnectionsForNode(
 		currentNodeId:String,
-		nodeMap:Map<String, {id:String, connections:Map<String, Int>}>,
+		nodeMap:Map<String, {id:String, connections:Map<String, {weight:Int, path:Array<{x:Int, y:Int}>}> }>,
 		levelsByGridPos:Map<String, data.Level>,
 		levelWidth:Int
 	):Void {
@@ -355,8 +355,8 @@ class EditProject extends ui.modal.Panel {
 		targetLevel:data.Level,
 		currentNodeId:String,
 		currentNodeCoords:{x:Int, y:Int},
-		nodeInfo:{id:String, connections:Map<String, Int>},
-		nodeMap:Map<String, {id:String, connections:Map<String, Int>}>,
+		nodeInfo:{id:String, connections:Map<String, {weight:Int, path:Array<{x:Int, y:Int}>}> },
+		nodeMap:Map<String, {id:String, connections:Map<String, {weight:Int, path:Array<{x:Int, y:Int}>}> }>,
 		levelsByGridPos:Map<String, data.Level>,
 		levelWidth:Int,
 		levelHeight:Int
@@ -388,31 +388,44 @@ class EditProject extends ui.modal.Panel {
 			}
 	
 			// 6. Sprawdź czy istnieje ścieżka
-			var hasPath = false;
+			var path:Array<{x:Int, y:Int}> = null;
 			if (isOceanLevel) {
 				// Poziomy "ocean" automatycznie łączą wszystkie punkty
-				hasPath = true;
+				// Tworzę prostą ścieżkę dla poziomów typu ocean - tylko punkt początkowy i końcowy
+				path = [{x: currentNodeCoords.x, y: currentNodeCoords.y}, {x: otherNodeCoords.x, y: otherNodeCoords.y}];
 			} else {
 				// Sprawdź czy pozycje są w granicach mapy i nie są zablokowane
 				if (isValidPosition(currentNodeCoords.x, currentNodeCoords.y, collisionLayer) &&
 					isValidPosition(otherNodeCoords.x, otherNodeCoords.y, collisionLayer)) {
 					
 					// Użyj klasy AStar do znalezienia ścieżki
-					var path = utils.AStar.findPath(
+					path = utils.AStar.findPath(
 						collisionLayer,
 						{ x: currentNodeCoords.x, y: currentNodeCoords.y },
 						{ x: otherNodeCoords.x, y: otherNodeCoords.y }
 					);
-					
-					// Jeśli znaleziono ścieżkę, hasPath = true
-					hasPath = (path != null && path.length > 0);
 				}
 			}
-	
+
+			//TODO - sprawdzic czy isValidPosition jest w ogole potrzebne.
+
 			// 7. Dodaj dwukierunkowe połączenie jeśli istnieje ścieżka
-			if (hasPath) {
-				nodeInfo.connections.set(otherNodeId, 1);
-				otherNodeInfo.connections.set(currentNodeId, 1);
+			if (path != null && path.length > 0) {
+				// Ustaw wagę jako długość ścieżki
+				nodeInfo.connections.set(otherNodeId, {
+					weight: path.length,
+					path: path
+				});
+				
+				// Odwróć ścieżkę dla połączenia w drugą stronę
+				var reversePath = path.copy();
+				reversePath.reverse();
+				
+				// Dodaj połączenie w drugą stronę
+				otherNodeInfo.connections.set(currentNodeId, {
+					weight: path.length,
+					path: reversePath
+				});
 			}
 		}
 	}
@@ -676,7 +689,7 @@ class EditProject extends ui.modal.Panel {
 
 
 		// Json minifiying
-		var i = Input.linkToHtmlInput( project.minifyJson, jForms.find("[name=minify]") );
+		var i = Input.linkToHtmlInput(project.minifyJson, jForms.find("[name=minify]") );
 		i.linkEvent(ProjectSettingsChanged);
 		i.onChange = ()->{
 			editor.invalidateAllLevelsCache;
@@ -930,7 +943,7 @@ class EditProject extends ui.modal.Panel {
 			};
 
 			// Create a temporary map to store all nodes
-			var nodeMap = new Map<String, { id:String, connections:Map<String, Int> }>();
+			var nodeMap = new Map<String, { id:String, connections:Map<String, {weight:Int, path:Array<{x:Int, y:Int}>}> }>();
 			
 			// Find max grid coordinates and create level map
 			var levelSize:Float = 0; // to jest szerokość poziomów na mapie świata, czyli np 5 x 5 poziomów
@@ -984,7 +997,7 @@ class EditProject extends ui.modal.Panel {
 							for (position in transitionPoints) {
 								// Create transition node with position information
 								var transitionId = currentId + "⎯" + neighborId + "⎯" + dir.name + "⎯" + position;
-								nodeMap.set(transitionId, { id: transitionId, connections: new Map<String, Int>() });
+								nodeMap.set(transitionId, { id: transitionId, connections: new Map<String, {weight:Int, path:Array<{x:Int, y:Int}>}>() });
 							}
 						}
 					}
@@ -1000,10 +1013,11 @@ class EditProject extends ui.modal.Panel {
 			// Step 5: Convert nodeMap to final format
 			for (node in nodeMap) {
 				var connections = [];
-				for (targetId => weight in node.connections) {
+				for (targetId => weightAndPath in node.connections) {
 					connections.push({
 						nodeId: targetId,
-						weight: weight
+						weight: weightAndPath.weight,
+						path: weightAndPath.path
 					});
 				}
 				project.pathfindingPaths.nodes.push({
@@ -1024,7 +1038,6 @@ class EditProject extends ui.modal.Panel {
 			// 	[1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,0,0,0,0,1,1,1,1,1],
 			// 	[1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,0,0,0,0,1,1,1,1,1],
 			// 	[1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,0,0,0,0,1,1,1,1,1],
-			// 	[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1],
 			// 	[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1],
 			// 	[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1],
 			// 	[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1],
@@ -1058,7 +1071,7 @@ class EditProject extends ui.modal.Panel {
 			// updateProjectForm();
 			// Update UI and notify success
 			editor.ge.emit(ProjectSettingsChanged);
-			N.success(L.t._('Pathfinding nodes and connections generated successfully.'));
+			N.success(L.t._("Pathfinding nodes and connections generated successfully."));
 		});
 
 		// Advanced options
