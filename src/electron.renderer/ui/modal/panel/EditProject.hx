@@ -350,7 +350,7 @@ class EditProject extends ui.modal.Panel {
 	 * Checks for connections between the current node and all other nodes
 	 * that share the specified target level. Updates connections maps directly.
 	 */
-	 private function checkConnectionsOnLevel(
+	private function checkConnectionsOnLevel(
 		targetLevelId:String, 
 		targetLevel:data.Level,
 		currentNodeId:String,
@@ -362,49 +362,53 @@ class EditProject extends ui.modal.Panel {
 		levelHeight:Int
 	):Void {
 		// 1. Pobierz warstwę kolizji i sprawdź czy to poziom "ocean"
-		var collisionLayer = targetLevel.collisionLayer;
-		var isOceanLevel = (collisionLayer == null || collisionLayer.length == 0);
-	
+		var isOceanLevel = (targetLevel.collisionLayer == null || targetLevel.collisionLayer.length == 0);
+		
+		// Używamy rzeczywistej warstwy kolizji lub tworzymy wirtualną dla oceanicznych poziomów
+		var collisionLayer = isOceanLevel
+			? createVirtualCollisionLayer(levelWidth, levelHeight)
+			: targetLevel.collisionLayer;
+		
 		// 2. Iteracja przez wszystkie inne potencjalne cele połączenia
 		for (otherNodeId => otherNodeInfo in nodeMap) {
 			if (otherNodeId == currentNodeId) continue;
-	
+		
 			// 3. Parsowanie ID drugiego węzła
 			var otherParts = otherNodeId.split("⎯");
 			if (otherParts.length != 4) continue;
-	
+		
 			var otherLevelA = otherParts[0];
 			var otherLevelB = otherParts[1];
-	
+		
 			// 4. Sprawdź czy drugi węzeł jest związany z targetLevelId
 			if (otherLevelA != targetLevelId && otherLevelB != targetLevelId) {
 				continue;
 			}
-	
+		
 			// 5. Oblicz współrzędne drugiego węzła NA TYM poziomie
 			var otherNodeCoords = getCoordsFromNodeId(otherNodeId, targetLevelId, levelWidth, levelHeight);
 			if (otherNodeCoords == null) {
 				continue;
 			}
-	
+		
 			// 6. Sprawdź czy istnieje ścieżka
 			var path:Array<{x:Int, y:Int}> = null;
-			if (isOceanLevel) {
-				// Poziomy "ocean" automatycznie łączą wszystkie punkty
-				// Tworzę prostą ścieżkę dla poziomów typu ocean - tylko punkt początkowy i końcowy
-				path = [{x: currentNodeCoords.x, y: currentNodeCoords.y}, {x: otherNodeCoords.x, y: otherNodeCoords.y}];
-			} else {
-				// Sprawdź czy pozycje są w granicach mapy i nie są zablokowane
-				if (isValidPosition(currentNodeCoords.x, currentNodeCoords.y, collisionLayer) &&
-					isValidPosition(otherNodeCoords.x, otherNodeCoords.y, collisionLayer)) {
-					
-					// Użyj klasy AStar do znalezienia ścieżki
-					path = utils.AStar.findPath(
-						collisionLayer,
-						{ x: currentNodeCoords.x, y: currentNodeCoords.y },
-						{ x: otherNodeCoords.x, y: otherNodeCoords.y }
-					);
-				}
+			
+			// Sprawdź czy pozycje są w granicach mapy i nie są zablokowane
+			if (isValidPosition(currentNodeCoords.x, currentNodeCoords.y, collisionLayer) &&
+				isValidPosition(otherNodeCoords.x, otherNodeCoords.y, collisionLayer)) {
+				
+				// Użyj klasy AStar do znalezienia ścieżki
+				path = utils.AStar.findPath(
+					collisionLayer,
+					{ x: currentNodeCoords.x, y: currentNodeCoords.y },
+					{ x: otherNodeCoords.x, y: otherNodeCoords.y }
+				);
+				
+				// // Dla poziomów oceanicznych, jeśli pathfinding się nie powiodło, użyj prostej ścieżki
+				// if (path == null && isOceanLevel) {
+				// 	path = [{x: currentNodeCoords.x, y: currentNodeCoords.y}, {x: otherNodeCoords.x, y: otherNodeCoords.y}];
+				// }
 			}
 
 			//TODO - sprawdzic czy isValidPosition jest w ogole potrzebne.
@@ -430,6 +434,19 @@ class EditProject extends ui.modal.Panel {
 		}
 	}
 	
+	// Funkcja tworząca wirtualną warstwę kolizji
+	function createVirtualCollisionLayer(levelWidth:Int, levelHeight:Int):Array<Array<Int>> {
+		var layer = [];
+		for (y in 0...levelHeight) {
+			var row = [];
+			for (x in 0...levelWidth) {
+				row.push(0); // 0 represents walkable space
+			}
+			layer.push(row);
+		}
+		return layer;
+	}
+
 	// Pomocnicza funkcja do sprawdzania, czy dana pozycja jest legalna na mapie kolizji
 	private function isValidPosition(x:Int, y:Int, collisionLayer:Array<Array<Int>>):Bool {
 		if (collisionLayer == null) return false;
@@ -951,17 +968,37 @@ class EditProject extends ui.modal.Panel {
 			var levelWidth:Int = Std.int(project.worlds[0].defaultLevelWidth / project.defaultGridSize);
 			var levelsByGridPos = new Map<String, data.Level>();
 			
+			// Utworzenie jednej, wspólnej warstwy kolizji dla poziomów oceanicznych
+			var virtualCollisionLayer = createVirtualCollisionLayer(levelWidth, levelWidth);
+			
 			// Step 1: Map levels and find grid boundaries
 			for(w in project.worlds) {
 				for(l in w.levels) {
 					var gridCoords = extractGridCoords(l.identifier);
 					if(gridCoords != null) {
 						levelSize = Math.max(levelSize, gridCoords.x);
+						levelSize = Math.max(levelSize, gridCoords.y); // Ensure we capture height too
 						var gridKey = Std.int(gridCoords.x) + "_" + Std.int(gridCoords.y);
 						levelsByGridPos.set(gridKey, l);
 					}
 				}
 			}
+			
+			// Step 2: Add virtual ocean levels for all grid positions up to levelSize
+			for (x in 0...Std.int(levelSize+1)) {
+				for (y in 0...Std.int(levelSize+1)) {
+					var gridKey = x + "_" + y;
+					if (!levelsByGridPos.exists(gridKey)) {
+						// Create a minimal level object with only the properties needed for pathfinding
+						var oceanLevel:Dynamic = {};
+						untyped oceanLevel.identifier = "Ocean_" + gridKey;
+						untyped oceanLevel.collisionLayer = virtualCollisionLayer;
+						levelsByGridPos.set(gridKey, cast oceanLevel);
+					}
+				}
+			}
+
+			trace("levelsByGridPos: " + levelsByGridPos);
 
 			// Step 3: Create valid connections between adjacent cells
 			for (x in 0...Std.int(levelSize+1)) {
@@ -1004,6 +1041,7 @@ class EditProject extends ui.modal.Panel {
 				}
 			}
 
+			//Step 4: Find connections for each node
 			for (currentNodeId => nodeInfo in nodeMap) {
 				// Example currentNodeId: "5_0⎯5_1⎯bottom⎯16"
 				// Find all other nodes connected to this one via shared levels and A* pathfinding.
