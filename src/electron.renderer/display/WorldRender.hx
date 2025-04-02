@@ -799,13 +799,21 @@ class WorldRender extends dn.Process {
 
 				if( li.def.isAutoLayer() && li.autoTilesCache!=null ) {
 					// Auto layer
+					var c : dn.Col = 0x0;
+					var cx = 0;
+					var cy = 0;
 					li.def.iterateActiveRulesInDisplayOrder( li, (r)->{
 						if( li.autoTilesCache.exists( r.uid ) ) {
-							for( allTiles in li.autoTilesCache.get( r.uid ) )
-							for( tileInfos in allTiles ) {
-								if( editor.curLevel.otherLevelCoordInBounds(l, tileInfos.x, tileInfos.y, edgeDistPx) ) {
-									markCoordAsDone(li, Std.int(tileInfos.x/li.def.gridSize), Std.int(tileInfos.y/li.def.gridSize));
-									LayerRender.renderAutoTileInfos(li, td, tileInfos, edgeTg);
+							for( allTiles in li.autoTilesCache.get( r.uid ).keyValueIterator() )
+							for( tileInfos in allTiles.value ) {
+								cx = Std.int( tileInfos.x / li.def.gridSize );
+								cy = Std.int( tileInfos.y / li.def.gridSize );
+								if( !isCoordDone(li,cx,cy) ) {
+									c = td.getAverageTileColor(tileInfos.tid);
+									if( c.af>=0.6 ) {
+										markCoordAsDone(li,cx,cy);
+										LayerRender.renderAutoTileInfos(li, td, tileInfos, edgeTg);
+									}
 								}
 							}
 						}
@@ -867,8 +875,8 @@ class WorldRender extends dn.Process {
 					var cy = 0;
 					li.def.iterateActiveRulesInDisplayOrder( li, (r)->{
 						if( li.autoTilesCache.exists( r.uid ) ) {
-							for( allTiles in li.autoTilesCache.get( r.uid ).keyValueIterator() )
-							for( tileInfos in allTiles.value ) {
+							for( allTiles in li.autoTilesCache.get( r.uid ) )
+							for( tileInfos in allTiles ) {
 								cx = Std.int( tileInfos.x / li.def.gridSize );
 								cy = Std.int( tileInfos.y / li.def.gridSize );
 								if( !isCoordDone(li,cx,cy) ) {
@@ -1047,8 +1055,18 @@ class WorldRender extends dn.Process {
 		connectionsWrapper.removeChildren();
 		connectionsWrapper.visible = true;
 		
+		// Kontener na linie pomiędzy punktami (pod punktami)
+		var linesWrapper = new h2d.Object(connectionsWrapper);
+		
+		// Kontener na punkty (nad liniami)
+		var pointsWrapper = new h2d.Object(connectionsWrapper);
+		
+		// Kontener na podświetlone linie (nad wszystkim)
+		var highlightedLinesWrapper = new h2d.Object(connectionsWrapper);
+		var currentPathGraphics:Null<h2d.Graphics> = null; // Przechowuje aktualnie wyświetlane linie pomiędzy punktami
+		
 		// Create a new graphics object for lines (connections)
-		var g = new h2d.Graphics(connectionsWrapper);
+		var g = new h2d.Graphics(linesWrapper);
 		
 		// Calculate appropriate line thickness based on zoom level
 		var zoomScale = 1 / camera.adjustedZoom;
@@ -1181,12 +1199,144 @@ class WorldRender extends dn.Process {
 		
 		// Helper to create tooltip text
 		function createTooltipText(node:Dynamic):String {
-			var text = 'ID: ${node.id}';
+			var info = 'ID: ${node.id}';
 			if (node.connections != null && node.connections.length > 0) {
-				text += '\nConnections:\n - '; // Add a newline and initial bullet point
-				text += (cast(node.connections, Array<Dynamic>)).join('\n - ');
+				info += '\nConnections:\n';
+				for (conn in cast(node.connections, Array<Dynamic>)) {
+					// Kau017cde pou0142u0105czenie to obiekt z polami nodeId i weight
+					if (Reflect.hasField(conn, "nodeId")) {
+						info += ' - ' + Std.string(Reflect.field(conn, "nodeId")) + '\n';
+					} else {
+						// Fallback w przypadku innej struktury
+						info += ' - ' + Std.string(conn) + '\n';
+					}
+				}
 			}
-			return text;
+			return info;
+		}
+		
+		// Funkcja do renderowania ścieżek połączeń
+		function renderConnectionPaths(node:Dynamic) {
+			// Usuń poprzednie linie, jeśli jakieś były narysowane
+			if (currentPathGraphics != null) {
+				currentPathGraphics.remove();
+				currentPathGraphics = null;
+			}
+			
+			// Utworz nowy obiekt graficzny dla podświetlonych ścieżek
+			currentPathGraphics = new h2d.Graphics(highlightedLinesWrapper);
+			
+			// Ustawienia dla linii
+			currentPathGraphics.lineStyle(lineThickness * 1.5, 0xFFCC00, 0.8);
+			
+			// Pobierz pozycję bieżącego punktu
+			var nodePos = getNodePosition(node.id);
+			if (nodePos == null) return;
+			
+			// Iteruj przez wszystkie połączenia węzła
+			if (node.connections != null) {
+				for (connectedNodeId in cast(node.connections, Array<Dynamic>)) {
+					// Sprawdź, czy połączenie ma identyfikator docelowy i ścieżkę
+					var targetId = Reflect.hasField(connectedNodeId, "nodeId") ? Reflect.field(connectedNodeId, "nodeId") : null;
+					var path = Reflect.hasField(connectedNodeId, "path") ? Reflect.field(connectedNodeId, "path") : null;
+					
+					if (targetId != null) {
+						// Pobierz pozycję punktu docelowego
+						var targetPos = getNodePosition(targetId);
+						if (targetPos == null) continue;
+						
+						// Jeśli mamy zapisaną ścieżkę, narysuj ją
+						if (path != null && Std.isOfType(path, Array)) {
+							// Pobierz współrzędne z tablicy punktów ścieżki
+							var points = cast(path, Array<Dynamic>);
+							if (points.length >= 2) {
+								// Pobierz poziomy z obu węzłów
+								var sourceRegex = ~/([0-9]+)_([0-9]+)[\u23AF\u23af]([0-9]+)_([0-9]+)[\u23AF\u23af](right|bottom)[\u23AF\u23af]([0-9]+)/g;
+								var targetRegex = ~/([0-9]+)_([0-9]+)[\u23AF\u23af]([0-9]+)_([0-9]+)[\u23AF\u23af](right|bottom)[\u23AF\u23af]([0-9]+)/g;
+								
+								if (sourceRegex.match(node.id) && targetRegex.match(targetId)) {
+									// Pobierz identyfikatory poziomów źródłowych i docelowych
+									var sourceFromLevel = sourceRegex.matched(1) + "_" + sourceRegex.matched(2);
+									var sourceToLevel = sourceRegex.matched(3) + "_" + sourceRegex.matched(4);
+									var targetFromLevel = targetRegex.matched(1) + "_" + targetRegex.matched(2);
+									var targetToLevel = targetRegex.matched(3) + "_" + targetRegex.matched(4);
+									
+									// Zidentyfikuj wspólny poziom
+									var sharedLevelId = null;
+									if (sourceFromLevel == targetFromLevel || sourceFromLevel == targetToLevel) {
+										sharedLevelId = sourceFromLevel;
+									} else if (sourceToLevel == targetFromLevel || sourceToLevel == targetToLevel) {
+										sharedLevelId = sourceToLevel;
+									}
+									
+									if (sharedLevelId != null) {
+										// Znajdź poziom w projekcie
+										var level = null;
+										var levelsObj = Reflect.field(project, "levels");
+										if (levelsObj != null) {
+											var levels = cast(levelsObj, Array<Dynamic>);
+											for (l in levels) {
+												if (Reflect.hasField(l, "identifier") && Reflect.field(l, "identifier") == sharedLevelId) {
+													level = l;
+													break;
+												}
+											}
+										}
+										
+										if (level != null) {
+											// Oblicz przesunięcie poziomu
+											var levelGridX = Std.parseInt(sharedLevelId.split("_")[0]);
+											var levelGridY = Std.parseInt(sharedLevelId.split("_")[1]);
+											
+											if (levelGridX != null && levelGridY != null) {
+												// Rozpocznij rysowanie ścieżki
+												var firstPoint = points[0];
+												var pxWid = Reflect.hasField(level, "pxWid") ? Reflect.field(level, "pxWid") : levelWidth;
+												var pxHei = Reflect.hasField(level, "pxHei") ? Reflect.field(level, "pxHei") : levelHeight;
+												var cellWidth = Reflect.hasField(level, "cellWidth") ? Reflect.field(level, "cellWidth") : 16;
+												var cellHeight = Reflect.hasField(level, "cellHeight") ? Reflect.field(level, "cellHeight") : 16;
+												
+												var px = (Reflect.field(firstPoint, "x") * pxWid / cellWidth) + worldOffsetX + (levelGridX * levelWidth);
+												var py = (Reflect.field(firstPoint, "y") * pxHei / cellHeight) + worldOffsetY + (levelGridY * levelHeight);
+												
+												currentPathGraphics.moveTo(px, py);
+												
+												// Rysuj linie do każdego następnego punktu
+												for (i in 1...points.length) {
+													var point = points[i];
+													px = (Reflect.field(point, "x") * pxWid / cellWidth) + worldOffsetX + (levelGridX * levelWidth);
+													py = (Reflect.field(point, "y") * pxHei / cellHeight) + worldOffsetY + (levelGridY * levelHeight);
+													currentPathGraphics.lineTo(px, py);
+												}
+											}
+										}
+									}
+								} else {
+									// Fallback: rysuj prostą linię między punktami, jeśli nie ma struktury łączącej
+									currentPathGraphics.moveTo(nodePos.x, nodePos.y);
+									currentPathGraphics.lineTo(targetPos.x, targetPos.y);
+								}
+							} else {
+								// Fallback: rysuj prostą linię między punktami, jeśli ścieżka jest krótsza niż 2 punkty
+								currentPathGraphics.moveTo(nodePos.x, nodePos.y);
+								currentPathGraphics.lineTo(targetPos.x, targetPos.y);
+							}
+						} else {
+							// Rysuj prostą linię, jeśli nie ma danych o ścieżce
+							currentPathGraphics.moveTo(nodePos.x, nodePos.y);
+							currentPathGraphics.lineTo(targetPos.x, targetPos.y);
+						}
+					}
+				}
+			}
+		}
+		
+		// Funkcja do usuwania narysowanych ścieżek
+		function clearConnectionPaths() {
+			if (currentPathGraphics != null) {
+				currentPathGraphics.remove();
+				currentPathGraphics = null;
+			}
 		}
 		
 		// 3. Przetworzenie wszystkich węzłów i ich pozycji
@@ -1195,13 +1345,10 @@ class WorldRender extends dn.Process {
 			var nodePos = getNodePosition(nodeId);
 			if (nodePos == null) continue;
 			
-			// Ustal typ węzła (poziom lub przejście)
-			var isTransition = nodeId.indexOf("\u23AF") >= 0 || nodeId.indexOf("⎯") >= 0;
-			
 			// Narysuj punkt dla węzła z odpowiednim kolorem i rozmiarem
-			if (isTransition) {
+			if (nodeId.indexOf("\u23AF") >= 0 || nodeId.indexOf("⎯") >= 0) {
 				// Węzeł przejścia - pomarańczowy, mniejszy, interaktywny
-				var point = new Interactive(pointRadius * 4, pointRadius * 4, connectionsWrapper);
+				var point = new Interactive(pointRadius * 4, pointRadius * 4, pointsWrapper);
 				point.x = nodePos.x - pointRadius * 2;
 				point.y = nodePos.y - pointRadius * 2;
 				point.cursor = Button;
@@ -1227,23 +1374,12 @@ class WorldRender extends dn.Process {
 					gPoint.drawCircle(pointRadius * 2, pointRadius * 2, enlargedRadius);
 					gPoint.endFill();
 					
-					// 2. Pokaż tooltip
+					// 2. Narysuj ścieżki połączeń
+					renderConnectionPaths(node);
+					
+					// 3. Pokaż tooltip
 					try {
-						var info = 'ID: ${node.id}';
-						if (node.connections != null && node.connections.length > 0) {
-							info += '\nConnections:\n';
-							for (conn in cast(node.connections, Array<Dynamic>)) {
-								// Kau017cde pou0142u0105czenie to obiekt z polami nodeId i weight
-								if (Reflect.hasField(conn, "nodeId")) {
-									info += ' - ' + Std.string(Reflect.field(conn, "nodeId")) + '\n';
-								} else {
-									// Fallback w przypadku innej struktury
-									info += ' - ' + Std.string(conn) + '\n';
-								}
-							}
-						}
-						
-						// Uu017cyj ostatniej znanej pozycji myszy z App.ME
+						var info = createTooltipText(node);
 						var px = App.ME.lastKnownMouse.pageX + 10;
 						var py = App.ME.lastKnownMouse.pageY + 10;
 						Tip.simpleTip(px, py, info);
@@ -1260,7 +1396,10 @@ class WorldRender extends dn.Process {
 					gPoint.drawCircle(pointRadius * 2, pointRadius * 2, originalRadius);
 					gPoint.endFill();
 					
-					// 2. Ukryj tooltip
+					// 2. Usuń narysowane ścieżki połączeń
+					clearConnectionPaths();
+					
+					// 3. Ukryj tooltip
 					Tip.clear();
 				}
 				
@@ -1280,14 +1419,19 @@ class WorldRender extends dn.Process {
 			// 4. Narysuj połączenia (linie)
 			if (node.connections != null) {
 				for (connectedNodeId in cast(node.connections, Array<Dynamic>)) {
-					var connectedNodePos = getNodePosition(connectedNodeId);
-					if (connectedNodePos != null) {
-						// Rysuj linię tylko raz (np. od węzła A do B, ale nie od B do A)
-						// Prosty sposób to rysowanie tylko jeśli ID bieżącego węzła jest "mniejsze" od połączonego
-						if (nodeId < connectedNodeId) {
-							g.lineStyle(lineThickness, 0xCCCCCC, 0.7);
-							g.moveTo(nodePos.x, nodePos.y);
-							g.lineTo(connectedNodePos.x, connectedNodePos.y);
+					// Sprawdź, czy połączenie ma identyfikator docelowy
+					var targetId = Reflect.hasField(connectedNodeId, "nodeId") ? Reflect.field(connectedNodeId, "nodeId") : null;
+					if (targetId != null) {
+						// Pobierz pozycję punktu docelowego
+						var targetPos = getNodePosition(targetId);
+						if (targetPos != null) {
+							// Rysuj linię tylko raz (np. od węzła A do B, ale nie od B do A)
+							// Prosty sposób to rysowanie tylko jeśli ID bieżącego węzła jest "mniejsze" od połączonego
+							if (nodeId < targetId) {
+								g.lineStyle(lineThickness, 0xCCCCCC, 0.7);
+								g.moveTo(nodePos.x, nodePos.y);
+								g.lineTo(targetPos.x, targetPos.y);
+							}
 						}
 					}
 				}
