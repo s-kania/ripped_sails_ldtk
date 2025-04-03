@@ -446,9 +446,40 @@ class ProjectSaver extends dn.Process {
 					// Write main.json first
 					var mainFp = dirFp.clone();
 					mainFp.fileWithExt = "main.json";
+					
+					// Przygotuj obiekt JSON z poziomami
+					var mainJson = { levels: mainLevels };
+
+					// Dodaj pathfindingPaths jeśli istnieją, pomijając pole "path" w połączeniach
+					if (project.pathfindingPaths != null && project.pathfindingPaths.nodes != null) {
+						var transformedNodes = [];
+						// Cast to Array<Dynamic> to satisfy the compiler for iteration
+						for (originalNode in (cast project.pathfindingPaths.nodes : Array<Dynamic>)) {
+							var transformedConnections = [];
+							if (originalNode.connections != null) {
+								// Cast to Array<Dynamic> to satisfy the compiler for iteration
+								for (originalConnection in (cast originalNode.connections : Array<Dynamic>)) {
+									transformedConnections.push({
+										nodeId: originalConnection.nodeId,
+										weight: originalConnection.weight
+									});
+								}
+							}
+							transformedNodes.push({
+								id: originalNode.id,
+								connections: transformedConnections
+							});
+						}
+						// Użyj untyped aby ominąć sprawdzanie typów przy przypisaniu
+						untyped mainJson.pathfindingPaths = { nodes: transformedNodes };
+					}
+
+					// Konwertuj główny obiekt JSON na string używając oryginalnej metody
+					var jsonStr = dn.data.JsonPretty.stringify(mainJson, Full);
+
 					NT.writeFileString(
 						mainFp.full,
-						dn.data.JsonPretty.stringify({ levels: mainLevels }, Full)
+						jsonStr
 					);
 
 					// Process individual level files
@@ -630,7 +661,7 @@ class ProjectSaver extends dn.Process {
 	}
 
 
-	public static function jsonStringify(p:data.Project, obj:Dynamic, ?skipHeader=false) {
+	public static inline function jsonStringify(p:data.Project, obj:Dynamic, ?skipHeader=false) {
 		return dn.data.JsonPretty.stringify(
 			obj,
 			p.minifyJson ? Minified : Compact,
@@ -655,12 +686,13 @@ class ProjectSaver extends dn.Process {
 			// Separate level JSONs
 			var idx = 0;
 			for(w in project.worlds)
-			for(l in w.levels)
+			for(l in w.levels) {
 				savingData.externLevels.push({
 					jsonStr: !l.hasJsonCache() ? jsonStringify( project, l.toJson() ) : l.getCacheJsonString(),
 					relPath: l.makeExternalRelPath(idx++),
 					id: l.identifier,
 				});
+			} // <- Ensure this closing brace is present
 
 			// Build project JSON without level data
 			var idx = 0;
@@ -677,7 +709,7 @@ class ProjectSaver extends dn.Process {
 			}
 			else {
 				for(levelJson in trimmedProjectJson.levels)
-					_clearLevelData(levelJson);
+				_clearLevelData(levelJson);
 			}
 
 			savingData.projectJsonStr = jsonStringify( project, trimmedProjectJson );
