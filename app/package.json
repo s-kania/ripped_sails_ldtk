@@ -6,7 +6,7 @@
 	"author": "Sebastien Benard",
 	"description": "2D level editor",
 	"scripts": {
-		"start": "electron .",
+		"start": "electron --no-sandbox --disable-gpu --disable-dev-shm-usage .",
 		"compile": "cd ..  &&  haxe main.hxml  &&  haxe renderer.hxml",
 		"doc": "cd ..  &&  haxe doc.hxml",
 		"pack-prepare": "npm run doc  &&  npm run compile",
