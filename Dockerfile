@@ -40,6 +40,7 @@ RUN apt-get update -o Acquire::Check-Valid-Until=false \
        libgtk-3-0 \
        libxss1 \
        libasound2 \
+       libasound2-dev \
        libxtst6 \
        libgbm1 \
        xvfb \
