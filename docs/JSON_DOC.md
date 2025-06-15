@@ -220,7 +220,6 @@ Value | Type | Description
 `parallaxFactorX`<br/> ![Generic badge](https://img.shields.io/badge/Added_1.0.0-gray.svg)  | Float | Parallax horizontal factor (from -1 to 1, defaults to 0) which affects the scrolling speed of this layer, creating a fake 3D (parallax) effect.
 `parallaxFactorY`<br/> ![Generic badge](https://img.shields.io/badge/Added_1.0.0-gray.svg)  | Float | Parallax vertical factor (from -1 to 1, defaults to 0) which affects the scrolling speed of this layer, creating a fake 3D (parallax) effect.
 `parallaxScaling`<br/> ![Generic badge](https://img.shields.io/badge/Added_1.0.0-gray.svg)  | Bool | If true (default), a layer with a parallax factor will also be scaled up/down accordingly.
-`pathfindingCollisionLayer`<br/> ![Generic badge](https://img.shields.io/badge/Added_1.0.0-gray.svg)  | Bool | If true (default), the layer is non-traversable by pathfinding.
 `pxOffsetX`<br/> ![Generic badge](https://img.shields.io/badge/Added_0.5.0-gray.svg)  | Int | X offset of the layer, in pixels (IMPORTANT: this should be added to the `LayerInstance` optional offset)
 `pxOffsetY`<br/> ![Generic badge](https://img.shields.io/badge/Added_0.5.0-gray.svg)  | Int | Y offset of the layer, in pixels (IMPORTANT: this should be added to the `LayerInstance` optional offset)
 `tilesetDefUid`<br/><sup class="only">Only *Tile layers, Auto-layers*</sup><br/> ![Generic badge](https://img.shields.io/badge/Changed_1.0.0-gray.svg)  | Int&nbsp;*(can&nbsp;be&nbsp;`null`)* | Reference to the default Tileset UID being used by this layer definition.<br/>		**WARNING**: some layer *instances* might use a different tileset. So most of the time, you should probably use the `__tilesetDefUid` value found in layer instances.<br/>		Note: since version 1.0.0, the old `autoTilesetDefUid` was removed and merged into this value.
@@ -295,7 +294,7 @@ Value | Type | Description
 `pivotX` | Float | Pivot X coordinate (from 0 to 1.0)
 `pivotY` | Float | Pivot Y coordinate (from 0 to 1.0)
 `tileRect`<br/> ![Generic badge](https://img.shields.io/badge/Added_1.0.0-gray.svg)  | [Tileset&nbsp;rectangle](#ldtk-TilesetRect)&nbsp;*(can&nbsp;be&nbsp;`null`)* | An object representing a rectangle from an existing Tileset
-`tileRenderMode`<br/> ![Generic badge](https://img.shields.io/badge/Changed_0.8.1-gray.svg)  | Enum | An enum describing how the the Entity tile is rendered inside the Entity bounds.<br/> Possible values: `Cover`, `FitInside`, `Repeat`, `Stretch`, `FullSizeCropped`, `FullSizeUncropped`, `NineSlice`
+`tileRenderMode`<br/> ![Generic badge](https://img.shields.io/badge/Changed_0.8.1-gray.svg)  | Enum | An enum describing how the Entity tile is rendered inside the Entity bounds.<br/> Possible values: `Cover`, `FitInside`, `Repeat`, `Stretch`, `FullSizeCropped`, `FullSizeUncropped`, `NineSlice`
 `tilesetId` | Int&nbsp;*(can&nbsp;be&nbsp;`null`)* | Tileset ID used for optional tile display
 `uiTileRect`<br/> ![Generic badge](https://img.shields.io/badge/Added_1.4.0-gray.svg)  | [Tileset&nbsp;rectangle](#ldtk-TilesetRect)&nbsp;*(can&nbsp;be&nbsp;`null`)* | This tile overrides the one defined in `tileRect` in the UI
 `uid` | Int | Unique Int identifier
