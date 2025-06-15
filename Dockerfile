@@ -41,6 +41,8 @@ RUN apt-get update -o Acquire::Check-Valid-Until=false \
        libxss1 \
        libasound2 \
        libasound2-dev \
+       libsqlite3-dev \
+       zlib1g-dev \
        libxtst6 \
        libgbm1 \
        xvfb \
