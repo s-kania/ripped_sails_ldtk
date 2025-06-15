@@ -55,6 +55,27 @@ class ProjectSaver extends dn.Process {
 		savingData = null;
 	}
 
+	/**
+	 * Transforms a pathfinding node ID from the internal format to the simplified format.
+	 * Removes direction information (bottom/right) from the ID.
+	 * Example: "7_2⎯7_3⎯bottom⎯15" becomes "7_2-7_3-15"
+	 */
+	function transformNodeIdForSimplified(nodeId:String):String {
+		var parts = nodeId.split("⎯");
+		if (parts.length != 4) {
+			// If format is unexpected, return as-is
+			return nodeId;
+		}
+		
+		var levelA = parts[0];
+		var levelB = parts[1];
+		// Skip direction (parts[2])
+		var position = parts[3];
+		
+		// Return simplified format: levelA-levelB-position
+		return levelA + "-" + levelB + "-" + position;
+	}
+
 
 	public static inline function hasAny() return QUEUE.length>0;
 
@@ -460,13 +481,13 @@ class ProjectSaver extends dn.Process {
 								// Cast to Array<Dynamic> to satisfy the compiler for iteration
 								for (originalConnection in (cast originalNode.connections : Array<Dynamic>)) {
 									transformedConnections.push({
-										nodeId: originalConnection.nodeId,
+										nodeId: transformNodeIdForSimplified(originalConnection.nodeId),
 										weight: originalConnection.weight
 									});
 								}
 							}
 							transformedNodes.push({
-								id: originalNode.id,
+								id: transformNodeIdForSimplified(originalNode.id),
 								connections: transformedConnections
 							});
 						}
