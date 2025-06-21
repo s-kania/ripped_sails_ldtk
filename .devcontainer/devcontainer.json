@@ -28,7 +28,7 @@
 
 	// WAŻNE: Upewnij się, że uruchomiłeś XQuartz i wykonałeś xhost + localhost na hoście!
 	// Uruchom polecenia po załączeniu do kontenera
-	"postAttachCommand": "export DBUS_SESSION_BUS_ADDRESS=unix:path=/var/run/dbus/system_bus_socket && cd app && npm run start",
+	"postAttachCommand": "cd app && npm run start",
 
 	// Podłącz lokalny folder projektu do kontenera
 	"workspaceFolder": "/workspace",
