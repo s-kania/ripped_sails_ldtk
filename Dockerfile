@@ -1,4 +1,4 @@
-FROM haxe:4.3
+FROM haxe:4.3@sha256:61f0dc1701aba905b3f295699c16fea2bc53d8f08700e1daa3ad3904836e7867
 
 WORKDIR /usr/src/app
 
@@ -12,7 +12,7 @@ RUN rm -rf /var/lib/apt/lists/* \
     && apt-get update -o Acquire::Check-Valid-Until=false
 
 # Instalacja neko i nekotools
-RUN apt-get install -y --fix-missing neko
+# RUN apt-get install -y --fix-missing neko
 
 # Ustawienie ścieżki haxelib
 RUN haxelib setup /usr/local/lib/haxe/lib
@@ -47,7 +47,9 @@ RUN apt-get update -o Acquire::Check-Valid-Until=false \
        libgbm1 \
        xvfb \
        x11-apps \
+       dbus \
        dbus-x11 \
+       libxinerama1 \
        libgl1-mesa-dri \
        libgles2 \
        libegl1 \
