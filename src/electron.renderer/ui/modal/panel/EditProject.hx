@@ -283,7 +283,7 @@ class EditProject extends ui.modal.Panel {
 	 */
 	 private function findAndAddConnectionsForNode(
 		currentNodeId:String,
-		nodeMap:Map<String, {id:String, connections:Map<String, {weight:Int, path:Array<{x:Int, y:Int}>}> }>,
+		nodeMap:Map<String, {id:String, connections:Map<String, {weight:Int, path:Array<{x:Int, y:Int}>, chunk:String}> }>,
 		levelsByGridPos:Map<String, data.Level>,
 		levelWidth:Int
 	):Void {
@@ -355,8 +355,8 @@ class EditProject extends ui.modal.Panel {
 		targetLevel:data.Level,
 		currentNodeId:String,
 		currentNodeCoords:{x:Int, y:Int},
-		nodeInfo:{id:String, connections:Map<String, {weight:Int, path:Array<{x:Int, y:Int}>}> },
-		nodeMap:Map<String, {id:String, connections:Map<String, {weight:Int, path:Array<{x:Int, y:Int}>}> }>,
+		nodeInfo:{id:String, connections:Map<String, {weight:Int, path:Array<{x:Int, y:Int}>, chunk:String}> },
+		nodeMap:Map<String, {id:String, connections:Map<String, {weight:Int, path:Array<{x:Int, y:Int}>, chunk:String}> }>,
 		levelsByGridPos:Map<String, data.Level>,
 		levelWidth:Int,
 		levelHeight:Int
@@ -418,7 +418,8 @@ class EditProject extends ui.modal.Panel {
 				// Ustaw wagę jako długość ścieżki
 				nodeInfo.connections.set(otherNodeId, {
 					weight: path.length,
-					path: path
+					path: path,
+					chunk: targetLevelId,
 				});
 				
 				// Odwróć ścieżkę dla połączenia w drugą stronę
@@ -428,7 +429,8 @@ class EditProject extends ui.modal.Panel {
 				// Dodaj połączenie w drugą stronę
 				otherNodeInfo.connections.set(currentNodeId, {
 					weight: path.length,
-					path: reversePath
+					path: reversePath,
+					chunk: targetLevelId,
 				});
 			}
 		}
@@ -960,7 +962,7 @@ class EditProject extends ui.modal.Panel {
 			};
 
 			// Create a temporary map to store all nodes
-			var nodeMap = new Map<String, { id:String, connections:Map<String, {weight:Int, path:Array<{x:Int, y:Int}>}> }>();
+			var nodeMap = new Map<String, { id:String, connections:Map<String, {weight:Int, path:Array<{x:Int, y:Int}>, chunk:String}> }>();
 			
 			// Find max grid coordinates and create level map
 			var levelSize:Float = 0; // to jest szerokość poziomów na mapie świata, czyli np 5 x 5 poziomów
@@ -1034,7 +1036,7 @@ class EditProject extends ui.modal.Panel {
 							for (position in transitionPoints) {
 								// Create transition node with position information
 								var transitionId = currentId + "⎯" + neighborId + "⎯" + dir.name + "⎯" + position;
-								nodeMap.set(transitionId, { id: transitionId, connections: new Map<String, {weight:Int, path:Array<{x:Int, y:Int}>}>() });
+								nodeMap.set(transitionId, { id: transitionId, connections: new Map<String, {weight:Int, path:Array<{x:Int, y:Int}>, chunk: String}>() });
 							}
 						}
 					}
@@ -1055,7 +1057,8 @@ class EditProject extends ui.modal.Panel {
 					connections.push({
 						nodeId: targetId,
 						weight: weightAndPath.weight,
-						path: weightAndPath.path
+						// path: weightAndPath.path,
+						chunk: weightAndPath.chunk
 					});
 				}
 				project.pathfindingPaths.nodes.push({

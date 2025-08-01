@@ -57,23 +57,27 @@ class ProjectSaver extends dn.Process {
 
 	/**
 	 * Transforms a pathfinding node ID from the internal format to the simplified format.
-	 * Removes direction information (bottom/right) from the ID.
-	 * Example: "7_2⎯7_3⎯bottom⎯15" becomes "7_2-7_3-15"
+	 * Extracts chunks and position information.
+	 * Example: "7_2⎯7_3⎯bottom⎯15" becomes {id: "7_2-7_3-15", chunks: ["7_2", "7_3"], position: 15}
 	 */
-	function transformNodeIdForSimplified(nodeId:String):String {
+	function transformNodeIdForSimplified(nodeId:String):{id:String, chunks:Array<String>, position:Int} {
 		var parts = nodeId.split("⎯");
 		if (parts.length != 4) {
 			// If format is unexpected, return as-is
-			return nodeId;
+			return { id: nodeId, chunks: [], position: 0 };
 		}
 		
 		var levelA = parts[0];
 		var levelB = parts[1];
 		// Skip direction (parts[2])
-		var position = parts[3];
+		var position = Std.parseInt(parts[3]);
 		
-		// Return simplified format: levelA-levelB-position
-		return levelA + "-" + levelB + "-" + position;
+		// Return new format with chunks and position
+		return {
+			id: levelA + "-" + levelB + "-" + position,
+			chunks: [levelA, levelB],
+			position: position
+		};
 	}
 
 
@@ -480,14 +484,19 @@ class ProjectSaver extends dn.Process {
 							if (originalNode.connections != null) {
 								// Cast to Array<Dynamic> to satisfy the compiler for iteration
 								for (originalConnection in (cast originalNode.connections : Array<Dynamic>)) {
+									var connectionInfo = transformNodeIdForSimplified(originalConnection.nodeId);
 									transformedConnections.push({
-										nodeId: transformNodeIdForSimplified(originalConnection.nodeId),
+										id: connectionInfo.id,
+										chunk: originalConnection.chunk, // Użyj drugiego chunka jako domyślnego
 										weight: originalConnection.weight
 									});
 								}
 							}
+							var nodeInfo = transformNodeIdForSimplified(originalNode.id);
 							transformedNodes.push({
-								id: transformNodeIdForSimplified(originalNode.id),
+								id: nodeInfo.id,
+								chunks: nodeInfo.chunks,
+								position: nodeInfo.position,
 								connections: transformedConnections
 							});
 						}
