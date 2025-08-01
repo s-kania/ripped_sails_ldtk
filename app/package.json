@@ -31,12 +31,12 @@
 	},
 	"dependencies": {
 		"codemirror": "^5.64.0",
-		"electron-updater": "^5.3.0",
+		"electron-updater": "^6.6.2",
 		"simple-color-picker": "^1.0.5",
 		"sortablejs": "^1.15.0"
 	},
 	"devDependencies": {
-		"electron": "^24.1.2",
-		"electron-builder": "^23.6.0"
+		"electron": "^37.2.4",
+		"electron-builder": "^26.0.12"
 	}
 }

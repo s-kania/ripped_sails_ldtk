@@ -1,0 +1,14 @@
+services:
+  gui:
+    image: dorowu/ubuntu-desktop-lxde-vnc
+    ports:
+      - "6080:80"     # host:container — Twój serwer noVNC dostępny na localhost:6080
+      # - "5900:5900"   # (opcjonalnie) natywny port VNC
+    volumes:
+      - ..:/workspace
+      - /dev/shm:/dev/shm
+    environment:
+      RESOLUTION: 1920x1080
+    # environment:
+    #   HTTP_PASSWORD: vscode
+    #   VNC_PASSWORD: vscode

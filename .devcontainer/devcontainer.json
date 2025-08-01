@@ -1,57 +1,11 @@
 {
 	"name": "LDtk Dev Environment",
-	"build": {
-		"dockerfile": "${localWorkspaceFolder}/Dockerfile",
-		"context": "${localWorkspaceFolder}",
-		"args": {
-			"BUILDKIT_INLINE_CACHE": "0"
-		}
-	},
-
-	// Ustawienia dla VS Code w kontenerze
-	"settings": {
-		"terminal.integrated.defaultProfile.linux": "bash"
-	},
-
-	// Rozszerzenia VS Code do zainstalowania w kontenerze
-	"extensions": [
-		"nadako.vshaxe",
-		"haxeFoundation.haxe", // Rozszerzenie dla Haxe
-		"dbaeumer.vscode-eslint" // Linter dla JavaScript
-	],
-
-	// Przekieruj porty, jeśli aplikacja uruchamia serwer (opcjonalne)
-	// "forwardPorts": [],
-
-	// Uruchom polecenia po stworzeniu kontenera (np. budowanie projektu)
-	"postCreateCommand": "haxe main.debug.hxml && haxe renderer.debug.hxml && mkdir -p /var/run/dbus && dbus-daemon --system --fork",
-
-	// WAŻNE: Upewnij się, że uruchomiłeś XQuartz i wykonałeś xhost + localhost na hoście!
-	// Uruchom polecenia po załączeniu do kontenera
-	"postAttachCommand": "cd app && npm run start",
-
-	// Podłącz lokalny folder projektu do kontenera
+	"dockerComposeFile": "compose.yml",
+	"service": "gui",
 	"workspaceFolder": "/workspace",
-	"workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached",
-
-	// Dodatkowe montowania folderów
+	"postCreateCommand": "bash .devcontainer/setup.sh",
+	"postStartCommand": "bash .devcontainer/build.sh",
 	"mounts": [
 		"source=${localEnv:HOME}/Documents/GitHub/ripped-sails/assets,target=/maps,type=bind,consistency=cached"
-	],
-
-	// Konfiguracja dla X11 przy użyciu XQuartz
-	"runArgs": [
-		// Przekazuje zmienne środowiskowe DISPLAY z hosta 
-		// do kontenera, co pozwala aplikacjom X11 wyświetlać się
-		// w XQuartz
-		"-e", "DISPLAY=host.docker.internal:0",
-		"-v", "/tmp/.X11-unix:/tmp/.X11-unix",
-		"--ipc=host"
-	],
-
-	// Zatrzymaj kontener kiedy VSCode się zamyka
-	"shutdownAction": "stopContainer",
-	
-	// Użyj root jako użytkownika domyślnego (dla uproszczenia)
-	"remoteUser": "root"
+	]
 } 
