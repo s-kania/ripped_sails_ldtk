@@ -3,42 +3,66 @@ name: package-macOS
 on:
   workflow_dispatch:
   push:
-    branches:
-      - master
+    branches: [ master ]
   pull_request:
-    branches:
-      - master
+    branches: [ master ]
+
+# Minimalne uprawnienia
+permissions:
+  contents: read
+
+# Zapobiega dublowaniu jobów na ten sam branch
+concurrency:
+  group: package-macOS-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
-
     strategy:
       matrix:
-        os: macos-13
-        haxe: [4.3.3]
+        os: [ macos-latest ]   # arm64 runner (Apple Silicon)
+        haxe: [ 4.3.3 ]
       fail-fast: true
-    runs-on: macos-13
+    runs-on: ${{ matrix.os }}
 
     steps:
-      # Checkout, install haxe and libs
+      # Checkout
       - uses: actions/checkout@v4
-      - uses: krdlab/setup-haxe@v1
+
+      # Haxe na arm64
+      - name: Setup Haxe
+        uses: shimataro/setup-haxe@v1
         with:
           haxe-version: ${{ matrix.haxe }}
+
       - run: haxe -version
       - run: haxe setup.hxml
       - run: haxelib list
 
-      # Node/NPM commands
-      - uses: actions/setup-node@v4
+      # Node/NPM (Node 14 jeśli projekt tego wymaga)
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
           node-version: '14'
-      - run: cd app && npm install
-      - run: cd app && npm run pack-prepare
-      - run: cd app && npm run pack-macos
+          cache: 'npm'
+          cache-dependency-path: app/package-lock.json
 
-      # Upload
-      - uses: actions/upload-artifact@v4
+      # Lepiej deterministycznie: ci (o ile masz package-lock.json)
+      - name: Install deps
+        run: npm ci
+        working-directory: app
+
+      - name: Pack prepare
+        run: npm run pack-prepare
+        working-directory: app
+
+      - name: Pack macOS
+        run: npm run pack-macos
+        working-directory: app
+
+      # Upload artefaktu .dmg do GitHuba
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
         with:
           name: mac-distribution
-          path: app/redist/LDtk**installer.dmg
+          path: app/redist/*installer.dmg
