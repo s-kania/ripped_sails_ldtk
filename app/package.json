@@ -1,10 +1,10 @@
 {
-	"name": "ldtk",
-	"version": "1.5.3",
+	"name": "ldtk-rp",
+	"version": "1.0.0",
 	"main": "assets/main.js",
-	"productName": "LDtk",
-	"author": "Sebastien Benard",
-	"description": "2D level editor",
+	"productName": "LDtk - Ripped Sails",
+	"author": "Stefan Kania",
+	"description": "Ripped Sails map editor",
 	"scripts": {
 		"start": "electron --no-sandbox --disable-gpu --disable-dev-shm-usage .",
 		"compile": "cd ..  &&  haxe main.hxml  &&  haxe renderer.hxml",
@@ -27,7 +27,7 @@
 	},
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/deepnight/ldtk.git"
+		"url": "https://github.com/s-kania/ripped_sails_ldtk.git"
 	},
 	"dependencies": {
 		"codemirror": "^5.64.0",
