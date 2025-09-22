@@ -40,25 +40,12 @@ jobs:
       - run: haxelib list
 
       # Node/NPM (Node 14 jeśli projekt tego wymaga)
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v1
         with:
           node-version: '14'
-          cache: 'npm'
-          cache-dependency-path: app/package-lock.json
-
-      # Lepiej deterministycznie: ci (o ile masz package-lock.json)
-      - name: Install deps
-        run: npm ci
-        working-directory: app
-
-      - name: Pack prepare
-        run: npm run pack-prepare
-        working-directory: app
-
-      - name: Pack macOS
-        run: npm run pack-macos
-        working-directory: app
+      - run: cd app && npm install
+      - run: cd app && npm run pack-prepare
+      - run: cd app && npm run pack-macos
 
       # Upload artefaktu .dmg do GitHuba
       - name: Upload artifact
