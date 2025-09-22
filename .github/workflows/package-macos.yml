@@ -40,9 +40,9 @@ jobs:
       - run: haxelib list
 
       # Node/NPM (Node 14 jeśli projekt tego wymaga)
-      - uses: actions/setup-node@v1
+      - uses: actions/setup-node@v5
         with:
-          node-version: '14'
+          node-version: '20.19.4'
       - run: cd app && npm install
       - run: cd app && npm run pack-prepare
       - run: cd app && npm run pack-macos
