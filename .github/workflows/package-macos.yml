@@ -31,7 +31,7 @@ jobs:
 
       # Haxe na arm64
       - name: Setup Haxe
-        uses: shimataro/setup-haxe@v1
+        uses: krdlab/setup-haxe@v1
         with:
           haxe-version: ${{ matrix.haxe }}
 
