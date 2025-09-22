@@ -29,17 +29,26 @@ jobs:
       # Checkout
       - uses: actions/checkout@v4
 
-      # Haxe na arm64
-      - name: Setup Haxe
-        uses: krdlab/setup-haxe@v1
-        with:
-          haxe-version: ${{ matrix.haxe }}
+      # Instalacja Haxe przez Homebrew (obsługuje ARM64)
+      - name: Install Haxe via Homebrew
+        run: |
+          brew install haxe
+          echo "HAXE_STD_PATH=$(brew --prefix)/lib/haxe/std" >> $GITHUB_ENV
 
-      - run: haxe -version
-      - run: haxe setup.hxml
-      - run: haxelib list
+      # Weryfikacja instalacji
+      - name: Verify Haxe installation
+        run: |
+          haxe -version
+          echo "Haxe standard library path: $HAXE_STD_PATH"
 
-      # Node/NPM (Node 14 jeśli projekt tego wymaga)
+      # Uruchomienie setup.hxml
+      - name: Setup Haxe libraries
+        run: haxe setup.hxml
+
+      - name: List Haxe libraries
+        run: haxelib list
+
+      # Node/NPM 
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -47,7 +56,7 @@ jobs:
           cache: 'npm'
           cache-dependency-path: app/package-lock.json
 
-      # Lepiej deterministycznie: ci (o ile masz package-lock.json)
+      # Instalacja zależności
       - name: Install deps
         run: npm ci
         working-directory: app
