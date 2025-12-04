@@ -530,6 +530,35 @@ class ProjectSaver extends dn.Process {
 					);
 				}
 
+				// Export walls folder with collision data for each level
+				var wallsDirFp = dn.FilePath.fromDir( project.getAbsExternalFilesDir()+"/walls" );
+				initDir(wallsDirFp.full, "json");
+				
+				for(w in project.worlds)
+				for(l in w.levels) {
+					// Generate collision layer for this level
+					l.generateCombinedCollisionLayer();
+					
+					// Build walls array from collisionLayer
+					var walls:Array<Array<Int>> = [];
+					if( l.collisionLayer != null ) {
+						for(y in 0...l.collisionLayer.length) {
+							var row = l.collisionLayer[y];
+							for(x in 0...row.length) {
+								if( row[x] == 1 ) {
+									walls.push([x, y]);
+								}
+							}
+						}
+					}
+					
+					// Write walls JSON file
+					var wallsJson = { walls: walls };
+					var wallsFp = wallsDirFp.clone();
+					wallsFp.fileWithExt = l.identifier + ".json";
+					NT.writeFileString( wallsFp.full, dn.data.JsonPretty.stringify( wallsJson, Minified ) );
+				}
+
 					// Process individual level files
 					var p = new ui.modal.Progress( "Simplified data...", ()->beginNextState() );
 					for(w in project.worlds)
