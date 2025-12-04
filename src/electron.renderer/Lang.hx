@@ -1,4 +1,4 @@
-import dn.data.GetText;
+import dn.data.LocaleString;
 
 class Lang {
 	// Text constants
@@ -16,7 +16,7 @@ class Lang {
 	static var _initDone = false;
 	static var DEFAULT = "en";
 	public static var CUR = "??";
-	public static var t : GetText;
+	public static var t : dn.data.GetText;
 
 
 	public static function init(?lid:String) {
@@ -26,7 +26,7 @@ class Lang {
 		_initDone = true;
 		CUR = lid==null ? DEFAULT : lid;
 
-		t = new GetText();
+		t = new dn.data.GetText();
 		t.readPo( hxd.Res.load("lang/"+CUR+".po").entry.getBytes() );
 	}
 
