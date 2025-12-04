@@ -1,5 +1,4 @@
 import dn.data.GetText;
-import dn.data.GetText.LocaleString;
 
 class Lang {
 	// Text constants
