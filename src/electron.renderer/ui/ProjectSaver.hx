@@ -48,6 +48,14 @@ class ProjectSaver extends dn.Process {
 		updateState();
 	}
 
+	inline function buildPositionsArray(source:Dynamic):Null<Array<Dynamic>> {
+		var start:Dynamic = untyped source.positionStart;
+		var end:Dynamic = untyped source.positionEnd;
+		if( start==null && end==null )
+			return null;
+		return [ start, end ];
+	}
+
 	override function onDispose() {
 		super.onDispose();
 		QUEUE.remove(this);
@@ -469,48 +477,58 @@ class ProjectSaver extends dn.Process {
 					}
 
 					// Write main.json first
-					var mainFp = dirFp.clone();
-					mainFp.fileWithExt = "main.json";
-					
-					// Przygotuj obiekt JSON z poziomami
-					var mainJson = { levels: mainLevels };
+				var mainFp = dirFp.clone();
+				mainFp.fileWithExt = "main.json";
+				
+				// Przygotuj obiekt JSON z poziomami
+				var mainJson = { levels: mainLevels };
 
-					// Dodaj pathfindingPaths jeśli istnieją, pomijając pole "path" w połączeniach
-					if (project.pathfindingPaths != null && project.pathfindingPaths.nodes != null) {
-						var transformedNodes = [];
-						// Cast to Array<Dynamic> to satisfy the compiler for iteration
-						for (originalNode in (cast project.pathfindingPaths.nodes : Array<Dynamic>)) {
-							var transformedConnections = [];
-							if (originalNode.connections != null) {
-								// Cast to Array<Dynamic> to satisfy the compiler for iteration
-								for (originalConnection in (cast originalNode.connections : Array<Dynamic>)) {
-									var connectionInfo = transformNodeIdForSimplified(originalConnection.nodeId);
-									transformedConnections.push({
-										id: connectionInfo.id,
-										chunk: originalConnection.chunk, // Użyj drugiego chunka jako domyślnego
-										weight: originalConnection.weight
-									});
-								}
+				// Przygotuj dane pathfinding do osobnego pliku
+				var pathfindingData:Dynamic = null;
+				if (project.pathfindingPaths != null && project.pathfindingPaths.nodes != null) {
+					var transformedNodes = [];
+					for (originalNode in (cast project.pathfindingPaths.nodes : Array<Dynamic>)) {
+						var transformedConnections = [];
+						if (originalNode.connections != null) {
+							for (originalConnection in (cast originalNode.connections : Array<Dynamic>)) {
+								var connectionInfo = transformNodeIdForSimplified(originalConnection.nodeId);
+								transformedConnections.push({
+									id: connectionInfo.id,
+									chunk: originalConnection.chunk,
+									weight: originalConnection.weight
+								});
 							}
-							var nodeInfo = transformNodeIdForSimplified(originalNode.id);
-							transformedNodes.push({
-								id: nodeInfo.id,
-								chunks: nodeInfo.chunks,
-								position: nodeInfo.position,
-								connections: transformedConnections
-							});
 						}
-						// Użyj untyped aby ominąć sprawdzanie typów przy przypisaniu
-						untyped mainJson.pathfindingPaths = { nodes: transformedNodes };
+						var nodeInfo = transformNodeIdForSimplified(originalNode.id);
+						var nodeEntry:Dynamic = {
+							id: nodeInfo.id,
+							chunks: nodeInfo.chunks,
+							connections: transformedConnections
+						};
+						var nodePositions = buildPositionsArray(originalNode);
+						if( nodePositions!=null )
+							untyped nodeEntry.positions = nodePositions;
+						transformedNodes.push(nodeEntry);
 					}
+					pathfindingData = { nodes: transformedNodes };
+				}
 
-					// Konwertuj główny obiekt JSON na string używając oryginalnej metody
-					var jsonStr = dn.data.JsonPretty.stringify(mainJson, Full);
+				// Konwertuj główny obiekt JSON na string używając oryginalnej metody
+				var jsonStr = dn.data.JsonPretty.stringify(mainJson, Full);
 
+				NT.writeFileString(
+					mainFp.full,
+					jsonStr
+				);
+
+				if( pathfindingData!=null ) {
+					var pathfindingFp = dirFp.clone();
+					pathfindingFp.fileWithExt = "pathfindingPoints.json";
 					NT.writeFileString(
-						mainFp.full,
-						jsonStr
+						pathfindingFp.full,
+						dn.data.JsonPretty.stringify(pathfindingData, Full)
 					);
+				}
 
 					// Process individual level files
 					var p = new ui.modal.Progress( "Simplified data...", ()->beginNextState() );

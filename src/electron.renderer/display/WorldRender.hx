@@ -1071,7 +1071,7 @@ class WorldRender extends dn.Process {
 		// Calculate appropriate line thickness based on zoom level
 		var zoomScale = 1 / camera.adjustedZoom;
 		var lineThickness = Math.max(1, 2 * zoomScale);
-		var pointRadius = 3 * zoomScale;
+		var pointRadius = 6 * zoomScale;
 		var levelPointRadius = 4 * zoomScale;
 
 		// Sprawdzamy czy istnieje struktura pathfindingPaths i jej węzły
@@ -1200,10 +1200,16 @@ class WorldRender extends dn.Process {
 		// Helper to create tooltip text
 		function createTooltipText(node:Dynamic):String {
 			var info = 'ID: ${node.id}';
+			// Dodaj informację o positions
+			var posStart:Dynamic = untyped node.positionStart;
+			var posEnd:Dynamic = untyped node.positionEnd;
+			if (posStart != null || posEnd != null) {
+				info += '\nPositions: [${posStart}, ${posEnd}]';
+			}
 			if (node.connections != null && node.connections.length > 0) {
 				info += '\nConnections:\n';
 				for (conn in cast(node.connections, Array<Dynamic>)) {
-					// Kau017cde pou0142u0105czenie to obiekt z polami nodeId i weight
+					// Każde połączenie to obiekt z polami nodeId i weight
 					if (Reflect.hasField(conn, "nodeId")) {
 						info += ' - ' + Std.string(Reflect.field(conn, "nodeId")) + '\n';
 					} else {

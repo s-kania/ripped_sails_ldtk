@@ -4,6 +4,21 @@ import utils.AStar;
 import js.lib.Error;
 import js.Node;
 
+typedef TransitionConnection = {
+	var weight:Int;
+	var path:Array<{x:Int, y:Int}>;
+	var chunk:String;
+	var positionStart:Null<{x:Int, y:Int}>;
+	var positionEnd:Null<{x:Int, y:Int}>;
+}
+
+typedef TransitionNode = {
+	var id:String;
+	var positionStart:Null<Int>;
+	var positionEnd:Null<Int>;
+	var connections:Map<String, TransitionConnection>;
+};
+
 class EditProject extends ui.modal.Panel {
 
 	var showAdvanced = false;
@@ -147,14 +162,27 @@ class EditProject extends ui.modal.Panel {
 		return coords.x + "_" + coords.y;
 	}
 
-	function getTransitionPoints(fromCollisionLayer:Array<Array<Int>>, toCollisionLayer:Array<Array<Int>>, direction:String, levelSize:Int):Array<Int> {
-		// Tablica przechowująca pozycje punktów przejścia
-		var transitionPoints:Array<Int> = [];
+	function getTransitionPoints(
+		fromCollisionLayer:Array<Array<Int>>,
+		toCollisionLayer:Array<Array<Int>>,
+		direction:String,
+		levelSize:Int
+	):Array<{start:Int, end:Int}> {
+		var transitionPoints = [];
+		inline function addSegment(segmentStart:Int, segmentEnd:Int) {
+			var clampedStart = Std.int(Math.max(segmentStart, 0));
+			var clampedEnd = Std.int(Math.max(segmentEnd, clampedStart));
+			transitionPoints.push({
+				start: clampedStart,
+				end: clampedEnd,
+			});
+		}
+		if( levelSize<=0 )
+			return transitionPoints;
 		
-		// Jeśli oba poziomy są puste (oceany), ustaw domyślny punkt przejścia na środku
+		// Jeśli oba poziomy są puste (oceany), cały brzeg jest przejściem
 		if (fromCollisionLayer == null && toCollisionLayer == null) {
-			// Używamy po prostu połowy rozmiaru poziomu jako punktu przejścia
-			transitionPoints.push(Std.int(levelSize / 2));
+			addSegment(0, levelSize-1);
 			return transitionPoints;
 		}
 		
@@ -186,24 +214,15 @@ class EditProject extends ui.modal.Panel {
 					
 					// Jeśli oba punkty są przechodnie, mamy przejście
 					if (fromRightEdge && toLeftEdge) {
-						// Jeśli to początek nowego segmentu
-						if (startY == -1) {
+						if (startY == -1)
 							startY = y;
-						}
-						// Jeśli to ostatni punkt (zaktualizowano warunek do levelSize), zapisz środek segmentu
-						if (y == levelSize - 1 && startY != -1) {
-							// Zmiana na Math.round
-							var middleY = Math.round((startY + y) / 2);
-							transitionPoints.push(middleY);
-						}
 					} else if (startY != -1) {
-						// Koniec ciągłego segmentu, zapisz środek
-						// Zmiana na Math.round
-						var middleY = Math.round((startY + (y - 1)) / 2);
-						transitionPoints.push(middleY);
-						startY = -1; // Reset dla nowego segmentu
+						addSegment(startY, y - 1);
+						startY = -1;
 					}
 				}
+				if( startY!=-1 )
+					addSegment(startY, levelSize-1);
 				
 			case "bottom":
 				// Sprawdzamy dolną granicę pierwszego poziomu i górną granicę drugiego poziomu
@@ -232,24 +251,15 @@ class EditProject extends ui.modal.Panel {
 					
 					// Jeśli oba punkty są przechodnie, mamy przejście
 					if (fromBottomEdge && toTopEdge) {
-						// Jeśli to początek nowego segmentu
-						if (startX == -1) {
+						if (startX == -1)
 							startX = x;
-						}
-						// Jeśli to ostatni punkt (zaktualizowano warunek do levelSize), zapisz środek segmentu
-						if (x == levelSize - 1 && startX != -1) {
-							// Zmiana na Math.round
-							var middleX = Math.round((startX + x) / 2);
-							transitionPoints.push(middleX);
-						}
 					} else if (startX != -1) {
-						// Koniec ciągłego segmentu, zapisz środek
-						// Zmiana na Math.round
-						var middleX = Math.round((startX + (x - 1)) / 2);
-						transitionPoints.push(middleX);
-						startX = -1; // Reset dla nowego segmentu
+						addSegment(startX, x - 1);
+						startX = -1;
 					}
 				}
+				if( startX!=-1 )
+					addSegment(startX, levelSize-1);
 				
 			case "left":
 				// Wywołaj funkcję dla kierunku przeciwnego, zamieniając poziomy miejscami
@@ -283,7 +293,7 @@ class EditProject extends ui.modal.Panel {
 	 */
 	 private function findAndAddConnectionsForNode(
 		currentNodeId:String,
-		nodeMap:Map<String, {id:String, connections:Map<String, {weight:Int, path:Array<{x:Int, y:Int}>, chunk:String}> }>,
+		nodeMap:Map<String, TransitionNode>,
 		levelsByGridPos:Map<String, data.Level>,
 		levelWidth:Int
 	):Void {
@@ -355,8 +365,8 @@ class EditProject extends ui.modal.Panel {
 		targetLevel:data.Level,
 		currentNodeId:String,
 		currentNodeCoords:{x:Int, y:Int},
-		nodeInfo:{id:String, connections:Map<String, {weight:Int, path:Array<{x:Int, y:Int}>, chunk:String}> },
-		nodeMap:Map<String, {id:String, connections:Map<String, {weight:Int, path:Array<{x:Int, y:Int}>, chunk:String}> }>,
+		nodeInfo:TransitionNode,
+		nodeMap:Map<String, TransitionNode>,
 		levelsByGridPos:Map<String, data.Level>,
 		levelWidth:Int,
 		levelHeight:Int
@@ -420,6 +430,8 @@ class EditProject extends ui.modal.Panel {
 					weight: path.length,
 					path: path,
 					chunk: targetLevelId,
+					positionStart: currentNodeCoords,
+					positionEnd: otherNodeCoords
 				});
 				
 				// Odwróć ścieżkę dla połączenia w drugą stronę
@@ -431,6 +443,8 @@ class EditProject extends ui.modal.Panel {
 					weight: path.length,
 					path: reversePath,
 					chunk: targetLevelId,
+					positionStart: otherNodeCoords,
+					positionEnd: currentNodeCoords
 				});
 			}
 		}
@@ -962,7 +976,7 @@ class EditProject extends ui.modal.Panel {
 			};
 
 			// Create a temporary map to store all nodes
-			var nodeMap = new Map<String, { id:String, connections:Map<String, {weight:Int, path:Array<{x:Int, y:Int}>, chunk:String}> }>();
+			var nodeMap = new Map<String, TransitionNode>();
 			
 			// Find max grid coordinates and create level map
 			var levelSize:Float = 0; // to jest szerokość poziomów na mapie świata, czyli np 5 x 5 poziomów
@@ -1031,46 +1045,50 @@ class EditProject extends ui.modal.Panel {
 							// Poprawka: Przekazujemy levelWidth, który jest teraz Int
 							var transitionPoints = getTransitionPoints(fromCollisionLayer, toCollisionLayer, dir.name, levelWidth);
 							
-							// Create transition nodes for each transition point
-							// Ten fragment powinien teraz działać, bo transitionPoints jest poprawnie typowane jako Array<Int>
-							for (position in transitionPoints) {
-								// Create transition node with position information
-								var transitionId = currentId + "⎯" + neighborId + "⎯" + dir.name + "⎯" + position;
-								nodeMap.set(transitionId, { id: transitionId, connections: new Map<String, {weight:Int, path:Array<{x:Int, y:Int}>, chunk: String}>() });
+							// Create transition nodes for each transition point segment
+							for (segment in transitionPoints) {
+								var center = Std.int(Math.round((segment.start + segment.end) / 2));
+								var transitionId = currentId + "⎯" + neighborId + "⎯" + dir.name + "⎯" + center;
+								nodeMap.set(transitionId, {
+									id: transitionId,
+									positionStart: segment.start,
+									positionEnd: segment.end,
+									connections: new Map<String, TransitionConnection>()
+								});
 							}
 						}
 					}
 				}
 			}
 
-			//Step 4: Find connections for each node
-			for (currentNodeId => nodeInfo in nodeMap) {
-				// Example currentNodeId: "5_0⎯5_1⎯bottom⎯16"
-				// Find all other nodes connected to this one via shared levels and A* pathfinding.
-				findAndAddConnectionsForNode(currentNodeId, nodeMap, levelsByGridPos, levelWidth);
-			}
+		//Step 4: Find connections for each node
+		for (currentNodeId => nodeInfo in nodeMap) {
+			// Example currentNodeId: "5_0⎯5_1⎯bottom⎯16"
+			// Find all other nodes connected to this one via shared levels and A* pathfinding.
+			findAndAddConnectionsForNode(currentNodeId, nodeMap, levelsByGridPos, levelWidth);
+		}
 
-			// Step 5: Convert nodeMap to final format
-			for (node in nodeMap) {
-				var connections = [];
-				for (targetId => weightAndPath in node.connections) {
-					connections.push({
-						nodeId: targetId,
-						weight: weightAndPath.weight,
-						// path: weightAndPath.path,
-						chunk: weightAndPath.chunk
-					});
-				}
-				project.pathfindingPaths.nodes.push({
-					id: node.id,
-					connections: connections
+		//Step 5: Convert nodeMap to final format
+		for (node in nodeMap) {
+			var connections = [];
+			for (targetId => weightAndPath in node.connections) {
+				connections.push({
+					nodeId: targetId,
+					weight: weightAndPath.weight,
+					// path: weightAndPath.path,
+					chunk: weightAndPath.chunk,
+					positionStart: weightAndPath.positionStart,
+					positionEnd: weightAndPath.positionEnd
 				});
 			}
+			project.pathfindingPaths.nodes.push({
+				id: node.id,
+				connections: connections,
+				positionStart: node.positionStart,
+				positionEnd: node.positionEnd
+			});
+		}
 
-			var finalPaths = [];
-
-			// --- A* Test Start ---
-			// TEMPORARILY COMMENTED OUT FOR DEBUGGING
 			// var testGrid: Array<Array<Int>> = [
 			// 	[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
 			// 	[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
