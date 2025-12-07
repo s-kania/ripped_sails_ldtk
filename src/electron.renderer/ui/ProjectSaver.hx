@@ -741,7 +741,11 @@ class ProjectSaver extends dn.Process {
 	public static inline function jsonStringify(p:data.Project, obj:Dynamic, ?skipHeader=false) {
 		return dn.data.JsonPretty.stringify(
 			obj,
-			p.minifyJson ? Minified : Compact,
+			switch p.jsonStyle {
+				case Minified: Minified;
+				case Compact: Compact;
+				case Full: Full;
+			},
 			skipHeader ? null : Const.JSON_HEADER
 		);
 	}

@@ -1,9 +1,9 @@
 {
 	"description": "This file is a JSON schema of files created by LDtk level editor (https://ldtk.io).",
-	"title": "LDtk 1.0.1 JSON schema",
+	"title": "LDtk 1.5.4 JSON schema",
 	"$schema": "https://json-schema.org/draft-07/schema#",
 	"$ref": "#/LdtkJsonRoot",
-	"version": "1.0.1",
+	"version": "1.5.4",
 	"LdtkJsonRoot": {
 		"description": "This is the root of any Project JSON file. It contains:  - the project settings, - an array of levels, - a group of definitions (that can probably be safely ignored for most users).",
 		"title": "LDtk Json root",
@@ -32,8 +32,8 @@
 			"flags",
 			"identifierStyle",
 			"imageExportMode",
+			"jsonStyle",
 			"levelNamePattern",
-			"minifyJson",
 			"nextUid",
 			"simplifiedExport"
 		],
@@ -328,6 +328,14 @@
 					"array"
 				]
 			},
+			"jsonStyle": {
+				"description": "JSON style Possible values: `Minified`, `Compact`, `Full`",
+				"enum": [
+					"Minified",
+					"Compact",
+					"Full"
+				]
+			},
 			"jsonVersion": {
 				"description": "File format version",
 				"type": [
@@ -373,7 +381,7 @@
 				]
 			},
 			"minifyJson": {
-				"description": "If TRUE, the Json is partially minified (no indentation, nor line breaks, default is FALSE)",
+				"description": "**WARNING**: this deprecated value will be *removed* completely on version 1.7.0+  Replaced by: `jsonStyle`",
 				"type": [
 					"boolean"
 				]
@@ -2481,6 +2489,7 @@
 				"excludedTags",
 				"guideGridHei",
 				"guideGridWid",
+				"guideOpacity",
 				"hideFieldsWhenInactive",
 				"hideInList",
 				"inactiveOpacity",
@@ -2494,6 +2503,12 @@
 			],
 			"additionalProperties": false,
 			"properties": {
+				"guideOpacity": {
+					"description": "Opacity of the optional \"guide\" grid",
+					"type": [
+						"number"
+					]
+				},
 				"pxOffsetX": {
 					"description": "X offset of the layer, in pixels (IMPORTANT: this should be added to the `LayerInstance` optional offset)",
 					"type": [
@@ -2681,6 +2696,13 @@
 					"description": "Width of the optional \"guide\" grid in pixels",
 					"type": [
 						"integer"
+					]
+				},
+				"guideColor": {
+					"description": "Color of the optional \"guide\" grid",
+					"type": [
+						"string",
+						"null"
 					]
 				},
 				"requiredTags": {

@@ -8,7 +8,7 @@ import dn.Chrono;
 import dn.legacy.Color as C;
 import hxd.Key as K;
 import Lang as L;
-import dn.data.GetText;
+import dn.data.LocaleString;
 import dn.js.ElectronTools as ET;
 import dn.js.NodeTools as NT;
 

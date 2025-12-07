@@ -2,19 +2,22 @@ package importer.enu;
 
 
 // Rough CastleDB JSON typedef
+
 private typedef CastleDbJson = {
-	var sheets : Array<{
+	var sheets : Array<CastleDbSheet>;
+}
+
+private typedef CastleDbSheet = {
+	var name : String;
+	var columns : Array<{
+		var typeStr : String;
 		var name : String;
-		var columns : Array<{
-			var typeStr : String;
-			var name : String;
-		}>;
-		var props : {
-			var hasGroup : Bool;
-			var displayIcon : Null<String>;
-		}
-		var lines : Array<Dynamic>;
 	}>;
+	var props : {
+		var hasGroup : Bool;
+		var displayIcon : Null<String>;
+	}
+	var lines : Array<Dynamic>;
 }
 
 private typedef CastleDbTile = {
@@ -40,6 +43,14 @@ class CastleDb extends importer.ExternalEnum {
 		var json : CastleDbJson = try haxe.Json.parse(fileContent) catch(_) null;
 		if( json==null )
 			return [];
+
+		function _getSheet(id:String) : Null<CastleDbSheet> {
+			for(sheet in json.sheets) {
+				if( sheet.name==id )
+					return sheet;
+			}
+			return null;
+		}
 
 		var parseds : Array<ParsedExternalEnum> = [];
 		for(sheet in json.sheets) {
@@ -73,14 +84,34 @@ class CastleDb extends importer.ExternalEnum {
 			}
 			parseds.push(enu);
 
+
+			function getExploredLines() {
+				if( sheet.name.indexOf("@")<0 )
+					return sheet.lines;
+				else {
+					// Sub lists
+					// WARNING: this only works for lists in first level. Lists in lists are not supported yet!
+					var baseSheetId = sheet.name.split("@")[0];
+					var subListId = sheet.name.split("@")[1];
+					var allLines = [];
+					for(line in _getSheet(baseSheetId).lines) {
+						var subList : Array<Dynamic> = Reflect.field(line, subListId);
+						for(subLine in subList??[])
+							allLines.push(subLine);
+					}
+					return allLines;
+				}
+			}
+
 			// Lookup or create icons tileset
 			var cdbTd : data.def.TilesetDef = null;
 			if( tileColumn!=null ) {
 				var project = Editor.ME.project;
-				for(line in sheet.lines) {
+				for(line in getExploredLines()) {
 					var t = Reflect.field(line, tileColumn);
 					if( t==null || t.file==null )
 						continue;
+
 					var rawIconPath = Std.string(t.file);
 					var cdbIconPath = dn.FilePath.fromFile(sourceFp.directory + sourceFp.slash() + rawIconPath);
 					for(td in project.defs.tilesets) {
@@ -110,7 +141,7 @@ class CastleDb extends importer.ExternalEnum {
 			}
 
 			var uniq = new Map();
-			for(line in sheet.lines) {
+			for(line in getExploredLines()) {
 				var e = Reflect.field(line, idColumn);
 				if( e==null || StringTools.trim(e).length==0 )
 					continue;
@@ -140,8 +171,8 @@ class CastleDb extends importer.ExternalEnum {
 					});
 				}
 			}
-
 		}
 		return parseds;
 	}
+
 }

@@ -721,13 +721,32 @@ class EditProject extends ui.modal.Panel {
 		jForms.find(".backupRecommend").css("visibility", project.recommendsBackup() ? "visible" : "hidden");
 
 
-		// Json minifiying
-		var i = Input.linkToHtmlInput(project.minifyJson, jForms.find("[name=minify]") );
+		// Json style
+		var jSelect = jForms.find("select#jsonStyle");
+		var i = new form.input.EnumSelect(
+			jSelect,
+			ldtk.Json.JsonStyle,
+			()->project.jsonStyle,
+			(v)->{
+				project.jsonStyle = v;
+				for(w in project.worlds)
+				for(l in w.levels)
+					editor.invalidateLevelCache(l);
+			},
+			(v)->switch v {
+				case Minified: L.t._("MINIFIED (minimal file size, no indentation)");
+				case Compact: L.t._("COMPACT (mostly indented, but small arrays are inlined)");
+				case Full: L.t._("FULL (fully indented)");
+			}
+		);
 		i.linkEvent(ProjectSettingsChanged);
-		i.onChange = ()->{
-			editor.invalidateAllLevelsCache;
-			recommendSaving();
-		}
+		// Json minifiying
+		// var i = Input.linkToHtmlInput( project.minifyJson, jForms.find("[name=minify]") );
+		// i.linkEvent(ProjectSettingsChanged);
+		// i.onChange = ()->{
+		// 	editor.invalidateAllLevelsCache;
+		// 	recommendSaving();
+		// }
 
 		// Simplified format
 		var i = Input.linkToHtmlInput( project.simplifiedExport, jForms.find("[name=simplifiedExport]") );
