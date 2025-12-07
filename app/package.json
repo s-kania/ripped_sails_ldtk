@@ -1,6 +1,6 @@
 {
 	"name": "ldtk-rp",
-	"version": "1.0.1",
+	"version": "1.5.4-rs1",
 	"main": "assets/main.js",
 	"productName": "LDtk - Ripped Sails",
 	"author": "Stefan Kania",
