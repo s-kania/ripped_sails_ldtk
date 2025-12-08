@@ -51,9 +51,11 @@ class ProjectSaver extends dn.Process {
 	inline function buildPositionsArray(source:Dynamic):Null<Array<Dynamic>> {
 		var start:Dynamic = untyped source.positionStart;
 		var end:Dynamic = untyped source.positionEnd;
-		if( start==null && end==null )
+		var adjustedStart:Dynamic = start!=null ? Std.int(start)+1 : null;
+		var adjustedEnd:Dynamic = end!=null ? Std.int(end)+1 : null;
+		if( adjustedStart==null && adjustedEnd==null )
 			return null;
-		return [ start, end ];
+		return [ adjustedStart, adjustedEnd ];
 	}
 
 	override function onDispose() {
@@ -546,7 +548,7 @@ class ProjectSaver extends dn.Process {
 							var row = l.collisionLayer[y];
 							for(x in 0...row.length) {
 								if( row[x] == 1 ) {
-									walls.push([x, y]);
+									walls.push([x+1, y+1]);
 								}
 							}
 						}
