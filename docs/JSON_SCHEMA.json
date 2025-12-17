@@ -988,6 +988,23 @@
 					"type": [
 						"integer"
 					]
+				},
+				"entityMode": {
+					"description": "If TRUE, this rule spawns entities instead of tiles",
+					"type": [
+						"boolean"
+					]
+				},
+				"entityDefUids": {
+					"description": "Array of entity definition UIDs to spawn when entityMode is TRUE",
+					"items": {
+						"type": [
+							"integer"
+						]
+					},
+					"type": [
+						"array"
+					]
 				}
 			},
 			"type": [

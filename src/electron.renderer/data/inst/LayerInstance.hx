@@ -55,6 +55,13 @@ class LayerInstance {
 			>
 		> > = null;
 
+	public var autoEntitiesCache :
+		Null< Map<Int, // RuleUID
+			Map<Int, // CoordID
+				Array<{ x:Int, y:Int, defUid:Int, a:Float }>
+			>
+		> > = null;
+
 	var areaIntGridUseCount : Map<Int, Map<Int,Int>> = new Map();
 	var layerIntGridUseCount : Map<Int,Int> = new Map();
 	var intGridAreaSize = 10;
@@ -841,8 +848,10 @@ class LayerInstance {
 					if( hasIntGrid(cx,cy) && cx<newCWid && cy<newCHei )
 						newIntGrid.set( _newCoordId(cx,cy), getIntGrid(cx,cy));
 				intGrid = newIntGrid;
-				if( def.isAutoLayer() )
+				if( def.isAutoLayer() ) {
 					autoTilesCache = null;
+					autoEntitiesCache = null;
+				}
 
 			case Entities:
 				var ratio = newGrid/oldGrid;
@@ -867,6 +876,7 @@ class LayerInstance {
 
 			case AutoLayer:
 				autoTilesCache = null;
+				autoEntitiesCache = null;
 		}
 	}
 
@@ -918,6 +928,37 @@ class LayerInstance {
 		}
 	}
 
+	inline function addRuleEntitiesAt(r:data.def.AutoLayerRuleDef, cx:Int, cy:Int, flips:Int) {
+		if( autoEntitiesCache==null )
+			autoEntitiesCache = new Map();
+
+		if( !autoEntitiesCache.exists(r.uid) )
+			autoEntitiesCache.set(r.uid, new Map());
+
+		var avail : Array<Int> = [];
+		for(uid in r.entityDefUids)
+			if( !avail.contains(uid) )
+				avail.push(uid);
+
+		if( avail.length==0 )
+			return;
+
+		var chosen = avail[ dn.M.randSeedCoords( r.uid + seed + flips, cx, cy, avail.length ) ];
+		var ed = _project.defs.getEntityDef(chosen);
+		if( ed==null )
+			return;
+
+		if( !autoEntitiesCache.get(r.uid).exists( coordId(cx,cy) ) )
+			autoEntitiesCache.get(r.uid).set( coordId(cx,cy), [] );
+
+		autoEntitiesCache.get(r.uid).get( coordId(cx,cy) ).push({
+			x: M.round( ( cx + ed.pivotX ) * def.gridSize ) + r.getXOffsetForCoord(seed, cx,cy, flips),
+			y: M.round( ( cy + ed.pivotY ) * def.gridSize ) + r.getYOffsetForCoord(seed, cx,cy, flips),
+			defUid: chosen,
+			a: r.alpha,
+		});
+	}
+
 	function clearAutoTilesCacheRect(r:data.def.AutoLayerRuleDef, cx,cy,wid,hei) {
 		if( !autoTilesCache.exists(r.uid) )
 			autoTilesCache.set( r.uid, [] );
@@ -928,12 +969,32 @@ class LayerInstance {
 			m.remove( coordId(x,y) );
 	}
 
+	function clearAutoEntitiesCacheRect(r:data.def.AutoLayerRuleDef, cx,cy,wid,hei) {
+		if( autoEntitiesCache==null )
+			autoEntitiesCache = new Map();
+
+		if( !autoEntitiesCache.exists(r.uid) )
+			autoEntitiesCache.set( r.uid, [] );
+
+		var m = autoEntitiesCache.get(r.uid);
+		for(y in cy...cy+hei)
+		for(x in cx...cx+wid)
+			m.remove( coordId(x,y) );
+	}
+
 	function clearAutoTilesCacheByRule(r:data.def.AutoLayerRuleDef) {
 		autoTilesCache.set( r.uid, [] );
 	}
 
+	function clearAutoEntitiesCacheByRule(r:data.def.AutoLayerRuleDef) {
+		if( autoEntitiesCache==null )
+			autoEntitiesCache = new Map();
+		autoEntitiesCache.set( r.uid, [] );
+	}
+
 	function clearAllAutoTilesCache() {
 		autoTilesCache = new Map();
+		autoEntitiesCache = new Map();
 	}
 
 	/**
@@ -961,22 +1022,34 @@ class LayerInstance {
 		// Apply rule
 		var matched = false;
 		if( r.matches(this, sourceLi, cx,cy) ) {
-			addRuleTilesAt(r, cx,cy, 0);
+			if( r.entityMode )
+				addRuleEntitiesAt(r, cx,cy, 0);
+			else
+				addRuleTilesAt(r, cx,cy, 0);
 			matched = true;
 		}
 
 		if( ( !matched || !r.breakOnMatch ) && r.flipX && r.matches(this, sourceLi, cx,cy, -1) ) {
-			addRuleTilesAt(r, cx,cy, 1);
+			if( r.entityMode )
+				addRuleEntitiesAt(r, cx,cy, 1);
+			else
+				addRuleTilesAt(r, cx,cy, 1);
 			matched = true;
 		}
 
 		if( ( !matched || !r.breakOnMatch ) && r.flipY && r.matches(this, sourceLi, cx,cy, 1, -1) ) {
-			addRuleTilesAt(r, cx,cy, 2);
+			if( r.entityMode )
+				addRuleEntitiesAt(r, cx,cy, 2);
+			else
+				addRuleTilesAt(r, cx,cy, 2);
 			matched = true;
 		}
 
 		if( ( !matched || !r.breakOnMatch ) && r.flipX && r.flipY && r.matches(this, sourceLi, cx,cy, -1, -1) ) {
-			addRuleTilesAt(r, cx,cy, 3);
+			if( r.entityMode )
+				addRuleEntitiesAt(r, cx,cy, 3);
+			else
+				addRuleTilesAt(r, cx,cy, 3);
 			matched = true;
 		}
 
@@ -1051,16 +1124,21 @@ class LayerInstance {
 		for( y in top...bottom+1 )
 		for( x in left...right+1 ) {
 			def.iterateActiveRulesInEvalOrder( this, (r)->{
-				if( autoTilesCache.exists(r.uid) && autoTilesCache.get(r.uid).exists(coordId(x,y)) ) {
+				var hasTiles = autoTilesCache!=null && autoTilesCache.exists(r.uid) && autoTilesCache.get(r.uid).exists(coordId(x,y));
+				var hasEntities = autoEntitiesCache!=null && autoEntitiesCache.exists(r.uid) && autoEntitiesCache.get(r.uid).exists(coordId(x,y));
+				if( hasTiles || hasEntities ) {
 					if( coordLocks.exists( coordId(x,y) ) ) {
 						// Tiles below locks are discarded
-						autoTilesCache.get(r.uid).remove( coordId(x,y) );
+						if( hasTiles )
+							autoTilesCache.get(r.uid).remove( coordId(x,y) );
+						if( hasEntities )
+							autoEntitiesCache.get(r.uid).remove( coordId(x,y) );
 					}
 					else if( r.breakOnMatch ) {
 						// Break on match is ON
 						coordLocks.set( coordId(x,y), true ); // mark cell as locked
 					}
-					else if( !r.hasAnyPositionOffset() && r.alpha>=1 ) {
+					else if( !r.entityMode && !r.hasAnyPositionOffset() && r.alpha>=1 ) {
 						// Check for opaque tiles
 						for( t in autoTilesCache.get(r.uid).get( coordId(x,y) ) )
 							if( td.isTileOpaque(t.tid) ) {
@@ -1088,7 +1166,7 @@ class LayerInstance {
 			return;
 		}
 
-		if( autoTilesCache==null ) {
+		if( autoTilesCache==null || autoEntitiesCache==null ) {
 			applyAllRules();
 			return;
 		}
@@ -1103,6 +1181,7 @@ class LayerInstance {
 		// Apply rules
 		def.iterateActiveRulesInEvalOrder( this, (r)->{
 			clearAutoTilesCacheRect(r, left,top, right-left+1, bottom-top+1);
+			clearAutoEntitiesCacheRect(r, left,top, right-left+1, bottom-top+1);
 			for(x in left...right+1)
 			for(y in top...bottom+1)
 				applyRuleAt(source, r, x,y);
@@ -1129,6 +1208,8 @@ class LayerInstance {
 		// Clear tiles if rule is disabled
 		if( !r.active || !def.getParentRuleGroup(r).active ) {
 			autoTilesCache.remove(r.uid);
+			if( autoEntitiesCache!=null )
+				autoEntitiesCache.remove(r.uid);
 			return;
 		}
 
@@ -1137,6 +1218,7 @@ class LayerInstance {
 			return;
 
 		clearAutoTilesCacheByRule(r);
+		clearAutoEntitiesCacheByRule(r);
 
 		if( def.autoLayerRulesCanBeUsed() ) {
 			for( ay in 0...Std.int(cHei/intGridAreaSize)+1 )

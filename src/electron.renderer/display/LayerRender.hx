@@ -116,47 +116,98 @@ class LayerRender {
 		case IntGrid, AutoLayer:
 			var td = li.getTilesetDef();
 
-			if( li.def.isAutoLayer() && renderAutoLayers && td!=null && td.isAtlasLoaded() ) {
-				var ed = td.getTagsEnumDef();
-
-				// Auto-layer tiles
-				var pixelGrid = new dn.heaps.PixelGrid(li.def.gridSize, li.cWid, li.cHei, renderTarget);
-				pixelGrid.x = li.pxTotalOffsetX;
-				pixelGrid.y = li.pxTotalOffsetY;
-
-				var tg = new h2d.TileGroup( td.getAtlasTile(), renderTarget);
-				var gr = App.ME.settings.v.tileEnumOverlays ? new h2d.Graphics(renderTarget) : null;
-
-				// If we're showing enums, dim the tileset slightly so the overlays stand out.
-				if( App.ME.settings.v.tileEnumOverlays )
-					tg.setDefaultColor(0xcccccc, .5);
-
-				if( li.autoTilesCache==null )
+			if( li.def.isAutoLayer() && renderAutoLayers ) {
+				// Ensure caches are available for both tile-mode and entity-mode rules
+				if( li.autoTilesCache==null || li.autoEntitiesCache==null )
 					li.applyAllRules();
+				else {
+					// When loading a project, autoTilesCache might be restored from JSON but entity-mode rules
+					// still need to generate their autoEntitiesCache.
+					var needsEntityEval = false;
+					li.def.iterateActiveRulesInEvalOrder( li, (r)->{
+						if( r.entityMode ) {
+							if( li.autoEntitiesCache==null || !li.autoEntitiesCache.exists(r.uid) )
+								needsEntityEval = true;
+							else {
+								var it = li.autoEntitiesCache.get(r.uid).keys();
+								if( it==null || !it.hasNext() )
+									needsEntityEval = true;
+							}
+						}
+					});
+					if( needsEntityEval )
+						li.applyAllRulesAt(0, 0, li.cWid, li.cHei);
+				}
 
-				li.def.iterateActiveRulesInDisplayOrder( li, (r)-> {
-					if( li.autoTilesCache.exists( r.uid ) ) {
-						var grid = li.def.gridSize;
-						for(tilesArray in li.autoTilesCache.get( r.uid ))
-						for(tileInfos in tilesArray) {
-							// Tile
-							renderAutoTileInfos(li, td, tileInfos, tg);
+				// Auto-layer tiles (only if atlas is ready)
+				if( td!=null && td.isAtlasLoaded() ) {
+					var ed = td.getTagsEnumDef();
 
-							if( App.ME.settings.v.tileEnumOverlays && ed!=null ) {
-								var n = 0;
-								for( ev in ed.values) {
-									if( td.hasTag(ev.id, tileInfos.tid)) {
-										gr.lineStyle(1, ev.color, 1);
-										gr.drawRect(
-											tileInfos.x + li.def.tilePivotX*li.def.gridSize + li.pxTotalOffsetX,
-											tileInfos.y + li.def.tilePivotY*li.def.gridSize + li.pxTotalOffsetY,
-											li.def.gridSize - 1 - n * 2,
-											li.def.gridSize - 1 - n * 2
-										);
-										n++;
+					var pixelGrid = new dn.heaps.PixelGrid(li.def.gridSize, li.cWid, li.cHei, renderTarget);
+					pixelGrid.x = li.pxTotalOffsetX;
+					pixelGrid.y = li.pxTotalOffsetY;
+
+					var tg = new h2d.TileGroup( td.getAtlasTile(), renderTarget);
+					var gr = App.ME.settings.v.tileEnumOverlays ? new h2d.Graphics(renderTarget) : null;
+
+					if( App.ME.settings.v.tileEnumOverlays )
+						tg.setDefaultColor(0xcccccc, .5);
+
+					li.def.iterateActiveRulesInDisplayOrder( li, (r)-> {
+						if( li.autoTilesCache.exists( r.uid ) ) {
+							for(tilesArray in li.autoTilesCache.get( r.uid ))
+							for(tileInfos in tilesArray) {
+								renderAutoTileInfos(li, td, tileInfos, tg);
+
+								if( App.ME.settings.v.tileEnumOverlays && ed!=null ) {
+									var n = 0;
+									for( ev in ed.values) {
+										if( td.hasTag(ev.id, tileInfos.tid)) {
+											gr.lineStyle(1, ev.color, 1);
+											gr.drawRect(
+												tileInfos.x + li.def.tilePivotX*li.def.gridSize + li.pxTotalOffsetX,
+												tileInfos.y + li.def.tilePivotY*li.def.gridSize + li.pxTotalOffsetY,
+												li.def.gridSize - 1 - n * 2,
+												li.def.gridSize - 1 - n * 2
+											);
+											n++;
+										}
 									}
 								}
 							}
+						}
+					});
+				}
+				else if( li.def.type==IntGrid ) {
+					// When tiles are unavailable, fallback to IntGrid pixels
+					var pixelGrid = new dn.heaps.PixelGrid(li.def.gridSize, li.cWid, li.cHei, renderTarget);
+					pixelGrid.x = li.pxTotalOffsetX;
+					pixelGrid.y = li.pxTotalOffsetY;
+
+					for(cy in 0...li.cHei)
+					for(cx in 0...li.cWid)
+						if( li.hasIntGrid(cx,cy) )
+							pixelGrid.setPixel( cx, cy, li.getIntGridColorAt(cx,cy) );
+				}
+
+				// Auto-layer entities (independent from tileset atlas readiness)
+				var autoEntities = new h2d.Object(renderTarget);
+				li.def.iterateActiveRulesInDisplayOrder( li, (r)-> {
+					if( !r.entityMode )
+						return;
+
+					if( li.autoEntitiesCache!=null && li.autoEntitiesCache.exists(r.uid) ) {
+						for(eArr in li.autoEntitiesCache.get(r.uid))
+						for(eInf in eArr) {
+							var entityDef = editor.project.defs.getEntityDef(eInf.defUid);
+							if( entityDef==null )
+								continue;
+
+							var core = EntityRender.renderCore(null, entityDef, li.def).wrapper;
+							core.x = eInf.x;
+							core.y = eInf.y;
+							core.alpha = eInf.a;
+							autoEntities.addChild(core);
 						}
 					}
 				});

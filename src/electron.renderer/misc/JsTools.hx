@@ -1573,6 +1573,137 @@ class JsTools {
 		return jColor;
 	}
 
+	public static function openEntityPickerModal(
+		selectedUids: Array<Int>,
+		onPick: (uids:Array<Int>)->Void
+	) : Bool {
+		var project = Editor.ME.project;
+		if( project.defs.entities.length==0 ) {
+			N.error("No entities defined");
+			return false;
+		}
+
+		var m = new ui.Modal();
+		m.addClass("entityPickerModal");
+
+		var jWrapper = new J('<div class="entityPickerWrapper"/>');
+		jWrapper.appendTo(m.jContent);
+
+		var allTags = project.defs.getRecallEntityTags();
+
+		// Entities grid section
+		var jEntitiesSection = new J('<div class="entitiesSection"/>');
+		jEntitiesSection.appendTo(jWrapper);
+
+		var jEntitiesGrid = new J('<div class="entitiesGrid"/>');
+		jEntitiesGrid.appendTo(jEntitiesSection);
+		// Enforce layout even if SCSS wasn't rebuilt
+		jEntitiesGrid.css("display", "grid");
+		jEntitiesGrid.css("grid-template-columns", "repeat(2, 1fr)");
+		jEntitiesGrid.css("gap", "8px");
+		jEntitiesGrid.css("overflow-y", "auto");
+
+		inline function applyEntitySelectedStyle(jEntity:js.jquery.JQuery, isSelected:Bool) {
+			if( isSelected ) {
+				jEntity.css("border-color", "#79dd8a");
+				jEntity.css("background-color", "rgba(121,221,138,0.25)");
+			}
+			else {
+				jEntity.css("border-color", "transparent");
+				jEntity.css("background-color", "");
+			}
+		}
+
+		// Function to refresh entity grid selection display
+		function refreshEntityGrid() {
+			jEntitiesGrid.find(".entityItem").each( (idx, el)->{
+				var jEl = new J(el);
+				var uid = Std.parseInt( jEl.attr("data-uid") );
+				var isSelected = selectedUids.contains(uid);
+				if( isSelected )
+					jEl.addClass("selected");
+				else
+					jEl.removeClass("selected");
+				applyEntitySelectedStyle(jEl, isSelected);
+			});
+		}
+
+		for( ed in project.defs.entities ) {
+			var isSelected = selectedUids.contains(ed.uid);
+			var jEntity = new J('<div class="entityItem"/>');
+			jEntity.attr("data-uid", Std.string(ed.uid));
+			if( isSelected )
+				jEntity.addClass("selected");
+			applyEntitySelectedStyle(jEntity, isSelected);
+
+			// Entity preview
+			var jPreview = createEntityPreview(project, ed, 48);
+			jEntity.append(jPreview);
+
+			// Entity name
+			var jName = new J('<span class="name"/>');
+			jName.text(ed.identifier);
+			jEntity.append(jName);
+
+			var edUid = ed.uid;
+			jEntity.click( (_)->{
+				if( selectedUids.contains(edUid) )
+					selectedUids.remove(edUid);
+				else
+					selectedUids.push(edUid);
+				jEntity.toggleClass("selected");
+				applyEntitySelectedStyle(jEntity, selectedUids.contains(edUid));
+			});
+			jEntitiesGrid.append(jEntity);
+		}
+
+		// Ensure initial UI state is consistent
+		refreshEntityGrid();
+
+		// Buttons section
+		var jButtons = new J('<div class="buttons"/>');
+		jButtons.appendTo(jWrapper);
+
+		// Pick by tag button
+		if( allTags.length > 0 ) {
+			var jPickByTag = new J('<button class="pickByTag">Pick entities by tag</button>');
+			jPickByTag.appendTo(jButtons);
+			jPickByTag.click( (_)->{
+				var ctx = new ui.modal.ContextMenu();
+				ctx.setAnchor( MA_JQuery(jPickByTag) );
+				for( tag in allTags ) {
+					ctx.addAction({
+						label: L.untranslated(tag),
+						cb: ()->{
+							for( ed in project.defs.entities ) {
+								if( ed.tags.has(tag) && !selectedUids.contains(ed.uid) ) {
+									selectedUids.push(ed.uid);
+								}
+							}
+							refreshEntityGrid();
+						}
+					});
+				}
+			});
+		}
+
+		var jConfirm = new J('<button class="confirm">Confirm</button>');
+		jConfirm.appendTo(jButtons);
+		jConfirm.click( (_)->{
+			onPick(selectedUids.copy());
+			m.close();
+		});
+
+		var jCancel = new J('<button class="cancel gray">Cancel</button>');
+		jCancel.appendTo(jButtons);
+		jCancel.click( (_)->{
+			m.close();
+		});
+
+		return true;
+	}
+
+
 	public static function applyListCustomColor(jLi:js.jquery.JQuery, col:dn.Col, isActive:Bool) {
 		if( col==null ) {
 			jLi.removeClass("customColor");

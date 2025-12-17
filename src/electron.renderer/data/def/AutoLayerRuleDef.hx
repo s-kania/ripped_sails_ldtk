@@ -33,6 +33,10 @@ class AutoLayerRuleDef {
 
 	public var invalidated = false;
 
+	// Entity spawning mode (alternative to tiles)
+	public var entityMode = false;
+	public var entityDefUids : Array<Int> = [];
+
 	var perlinActive = false;
 	public var perlinSeed : Int;
 	public var perlinScale : Float = 0.2;
@@ -143,7 +147,7 @@ class AutoLayerRuleDef {
 	public function toJson(ld:LayerDef) : ldtk.Json.AutoRuleDef {
 		tidy(ld);
 
-		return {
+		var json : ldtk.Json.AutoRuleDef = {
 			uid: uid,
 			active: active,
 			size: size,
@@ -177,6 +181,12 @@ class AutoLayerRuleDef {
 			perlinScale: JsonTools.writeFloat(perlinScale),
 			perlinOctaves: perlinOctaves,
 		}
+
+		// Add entity fields dynamically (not part of ldtk.Json.AutoRuleDef)
+		Reflect.setField(json, "entityMode", entityMode);
+		Reflect.setField(json, "entityDefUids", entityDefUids.copy());
+
+		return json;
 	}
 
 	public static function fromJson(jsonVersion:String, json:ldtk.Json.AutoRuleDef) {
@@ -224,6 +234,10 @@ class AutoLayerRuleDef {
 		r.perlinScale = JsonTools.readFloat(json.perlinScale, 0.2);
 		r.perlinOctaves = JsonTools.readInt(json.perlinOctaves, 2);
 		r.perlinSeed = JsonTools.readInt(json.perlinSeed, Std.random(9999999));
+
+		// Entity mode fields
+		r.entityMode = JsonTools.readBool( (cast json).entityMode, false );
+		r.entityDefUids = JsonTools.readArray( (cast json).entityDefUids, [] );
 
 		r.updateUsedValues();
 
@@ -291,6 +305,10 @@ class AutoLayerRuleDef {
 			if( v!=0 )
 				return false;
 
+		// Check if entities are selected in entity mode
+		if( entityMode )
+			return entityDefUids.length==0;
+
 		return tileRectsIds.length==0;
 	}
 
@@ -338,7 +356,10 @@ class AutoLayerRuleDef {
 	}
 
 	public function matches(li:data.inst.LayerInstance, source:data.inst.LayerInstance, cx:Int, cy:Int, dirX=1, dirY=1) {
-		if( tileRectsIds.length==0 )
+		if( !entityMode && tileRectsIds.length==0 )
+			return false;
+
+		if( entityMode && entityDefUids.length==0 )
 			return false;
 
 		if( chance<=0 || chance<1 && dn.M.randSeedCoords(li.seed+uid, cx,cy, 100) >= chance*100 )

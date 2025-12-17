@@ -102,27 +102,64 @@ class RuleEditor extends ui.modal.Dialog {
 		var jTilesSettings = jContent.find(".tileSettings");
 		jTilesSettings.off();
 
-		// Tile mode
+		// Mode select (tiles or entities)
 		var jModeSelect = jContent.find("select[name=tileMode]");
 		jModeSelect.empty();
-		var i = new form.input.EnumSelect(
-			jModeSelect,
-			ldtk.Json.AutoLayerRuleTileMode,
-			()->rule.tileMode,
-			(v)->rule.tileMode = v,
-			(v)->switch v {
-				case Single: Lang.t._("Individual tiles");
-				case Stamp: Lang.t._("Rectangles of tiles");
+
+		// Add options manually to include entity mode
+		var optSingle = new J('<option value="Single">Individual tiles</option>');
+		var optStamp = new J('<option value="Stamp">Rectangles of tiles</option>');
+		var optEntities = new J('<option value="Entities">Entities</option>');
+		jModeSelect.append(optSingle);
+		jModeSelect.append(optStamp);
+		jModeSelect.append(optEntities);
+
+		// Set current value
+		if( rule.entityMode )
+			jModeSelect.val("Entities");
+		else
+			jModeSelect.val( rule.tileMode == Single ? "Single" : "Stamp" );
+
+		jModeSelect.change( (_)->{
+			var val = jModeSelect.val();
+			if( val == "Entities" ) {
+				rule.entityMode = true;
+			} else {
+				rule.entityMode = false;
+				rule.tileMode = val == "Single" ? Single : Stamp;
+				rule.tileRectsIds = [];
 			}
-		);
-		i.onChange = function() {
 			onAnyRuleChange();
-			rule.tileRectsIds = [];
 			updateTileSettings();
+		});
+
+		// Content area
+		var jTileRects = jTilesSettings.find(">.tileRects").empty();
+
+		if( rule.entityMode ) {
+			// Entity mode UI
+			renderEntitySelection(jTileRects);
+		} else {
+			// Tile mode UI
+			renderTileSelection(jTileRects);
 		}
 
-		// Tile(s)
-		var jTileRects = jTilesSettings.find(">.tileRects").empty();
+		// Pivot (optional) - only for Stamp mode
+		var jTileOptions = jTilesSettings.find(">.options").empty();
+		if( !rule.entityMode && rule.tileMode == Stamp ) {
+			var jPivot = JsTools.createPivotEditor(rule.pivotX, rule.pivotY, (xr,yr)->{
+				rule.pivotX = xr;
+				rule.pivotY = yr;
+				onAnyRuleChange();
+				renderAll();
+			});
+			jTileOptions.append(jPivot);
+		}
+
+		JsTools.parseComponents(jTilesSettings);
+	}
+
+	function renderTileSelection(jTileRects:js.jquery.JQuery) {
 		function _pickTiles(rectIdx:Int) {
 			var pickerTids = rectIdx<0 || rule.tileRectsIds.length==0 ? [] : switch rule.tileMode {
 				case Single: rule.tileRectsIds.map( tids->tids[0] );
@@ -197,23 +234,57 @@ class RuleEditor extends ui.modal.Dialog {
 					}
 			}
 		}
+	}
 
+	function renderEntitySelection(jContainer:js.jquery.JQuery) {
+		var jWrapper = new J('<div class="entitySelection"/>');
+		jWrapper.appendTo(jContainer);
 
-		// Pivot (optional)
-		var jTileOptions = jTilesSettings.find(">.options").empty();
-		switch rule.tileMode {
-			case Single:
-			case Stamp:
-				var jPivot = JsTools.createPivotEditor(rule.pivotX, rule.pivotY, (xr,yr)->{
-					rule.pivotX = xr;
-					rule.pivotY = yr;
+		// Pick entities button
+		var jPickBtn = new J('<button class="pickEntities">Pick entities...</button>');
+		jPickBtn.appendTo(jWrapper);
+		jPickBtn.click( (_)->{
+			JsTools.openEntityPickerModal(
+				rule.entityDefUids.copy(),
+				function(uids) {
+					rule.entityDefUids = uids;
 					onAnyRuleChange();
-					renderAll();
-				});
-				jTileOptions.append(jPivot);
+					updateTileSettings();
+				}
+			);
+		});
+
+		// Selected entities preview
+		var jPreviewSection = new J('<div class="selectedEntities"/>');
+		jPreviewSection.appendTo(jWrapper);
+
+		// Show selected entities
+		if( rule.entityDefUids.length > 0 ) {
+			var jEntitiesPreview = new J('<div class="entitiesPreview"/>');
+			for( uid in rule.entityDefUids ) {
+				var ed = project.defs.getEntityDef(uid);
+				if( ed != null ) {
+					var jEntity = JsTools.createEntityPreview(project, ed, 32);
+					jEntity.addClass("selected");
+					ui.Tip.attach(jEntity, ed.identifier);
+					jEntitiesPreview.append(jEntity);
+				}
+			}
+			jPreviewSection.append(jEntitiesPreview);
 		}
 
-		JsTools.parseComponents(jTilesSettings);
+		// Summary
+		var jSummary = new J('<div class="summary"/>');
+		jSummary.appendTo(jWrapper);
+		var selectedCount = rule.entityDefUids.length;
+		if( selectedCount > 0 ) {
+			var summaryText = [];
+			if( selectedCount > 0 )
+				summaryText.push('$selectedCount entity(ies)');
+			jSummary.text(summaryText.join(", "));
+		} else {
+			jSummary.text("Click to select entities");
+		}
 	}
 
 

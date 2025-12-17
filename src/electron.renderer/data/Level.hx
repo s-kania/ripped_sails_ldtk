@@ -242,6 +242,29 @@ class Level {
 		}
 
 		for (li in layerInstances) {
+			if( (li.def.type == AutoLayer || li.def.type == IntGrid) && li.def.isAutoLayer() ) {
+				// Ensure auto-layer rules have been evaluated so simplified export is complete
+				if( li.autoTilesCache==null || li.autoEntitiesCache==null )
+					li.applyAllRules();
+				else {
+					// autoLayerTiles can be restored from JSON while entity-mode rules still need evaluation.
+					var needsEntityEval = false;
+					li.def.iterateActiveRulesInEvalOrder( li, (r)->{
+						if( r.entityMode ) {
+							if( li.autoEntitiesCache==null || !li.autoEntitiesCache.exists(r.uid) )
+								needsEntityEval = true;
+							else {
+								var it = li.autoEntitiesCache.get(r.uid).keys();
+								if( it==null || !it.hasNext() )
+									needsEntityEval = true;
+							}
+						}
+					});
+					if( needsEntityEval )
+						li.applyAllRulesAt(0, 0, li.cWid, li.cHei);
+				}
+			}
+
 			if ((li.def.type == AutoLayer || li.def.type == IntGrid) && li.autoTilesCache != null) {
 				var layerArray = Reflect.field(simpleJson.layers, li.def.identifier);
 				if (layerArray == null) {
@@ -258,6 +281,39 @@ class Level {
 							});
 						}
 					}
+				}
+			}
+
+			// Export auto-layer entity-mode results grouped by rule group name
+			if( (li.def.type == AutoLayer || li.def.type == IntGrid) && li.autoEntitiesCache != null ) {
+				for( ruleEntry in li.autoEntitiesCache.keyValueIterator() ) {
+					var r = li.def.getRule(ruleEntry.key);
+					if( r==null || !r.entityMode )
+						continue;
+					var rg = r==null ? null : li.def.getParentRuleGroup(r);
+					var key = rg==null ? li.def.identifier+"-entities" : li.def.identifier+"-"+rg.name;
+
+					var entsArray : Dynamic = null;
+					for( coordEntry in ruleEntry.value )
+						for( eInf in coordEntry ) {
+							var ed = _project.defs.getEntityDef(eInf.defUid);
+							if( ed==null )
+								continue;
+
+							if( entsArray==null ) {
+								entsArray = Reflect.field(simpleJson.layers, key);
+								if( entsArray==null ) {
+									entsArray = [];
+									Reflect.setField(simpleJson.layers, key, entsArray);
+								}
+							}
+
+							entsArray.push({
+								id: ed.identifier,
+								x: eInf.x + li.pxTotalOffsetX,
+								y: eInf.y + li.pxTotalOffsetY,
+							});
+						}
 				}
 			}
 		}
