@@ -150,6 +150,7 @@ class Level {
 	public function toJson(ignoreCache=false) : ldtk.Json.LevelJson {
 		if( !ignoreCache && hasJsonCache() ) {
 			var o = getCacheJsonObject();
+			Reflect.deleteField(o, "collisionLayer");
 			if( !_project.externalLevels )
 				Reflect.deleteField(o, dn.data.JsonPretty.HEADER_VALUE_NAME);
 			return o;
@@ -212,7 +213,7 @@ class Level {
 		}
 
 		// Dodaj warstwę kolizji jako dynamiczne pole
-		Reflect.setField(json, "collisionLayer", generateCombinedCollisionLayer());
+		Reflect.deleteField(json, "collisionLayer");
 
 		// Cache this json
 		if( !ignoreCache )
@@ -387,16 +388,12 @@ class Level {
 
 		// Wczytywanie warstwy kolizji (jeśli istnieje)
 		if (Reflect.hasField(json, "collisionLayer")) {
-			var jsonCollLayer:Array<Array<Int>> = cast Reflect.field(json, "collisionLayer");
-			l.collisionLayer = [];
-			for (i in 0...jsonCollLayer.length) {
-				var row = jsonCollLayer[i];
-				l.collisionLayer.push(row);
-			}
+			Reflect.deleteField(json, "collisionLayer");
 		} else {
 			// Generuj collision layer jeśli nie ma go w JSON
-			l.collisionLayer = l.generateCombinedCollisionLayer();
+			l.collisionLayer = null;
 		}
+		l.collisionLayer = null;
 
 		// Init cache
 		crawlObjectRec(json); // Because haxe.Json.parse unescapes "\n" chars, we need to re-escape them before caching the JSON object

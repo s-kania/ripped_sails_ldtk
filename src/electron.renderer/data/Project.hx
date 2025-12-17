@@ -326,7 +326,6 @@ class Project {
 			p.imageExportMode = json.exportPng==true ? OneImagePerLayer : None;
 		p.exportLevelBg = JsonTools.readBool(json.exportLevelBg, true);
 		p.showPathfindingPaths = untyped JsonTools.readBool( json.showPathfindingPaths, false );
-		p.pathfindingPaths = untyped json.pathfindingPaths;
 
 		Definitions.fromJson(p, json.defs);
 
@@ -701,7 +700,6 @@ class Project {
 		}
 
 		untyped json.showPathfindingPaths = showPathfindingPaths;
-		untyped json.pathfindingPaths = pathfindingPaths;
 		return json;
 	}
 

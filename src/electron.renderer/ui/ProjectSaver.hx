@@ -58,6 +58,39 @@ class ProjectSaver extends dn.Process {
 		return [ adjustedStart, adjustedEnd ];
 	}
 
+	inline function buildPathfindingDataForSimplified():Null<Dynamic> {
+		data.PathfindingPaths.ensure(project);
+		if( project.pathfindingPaths == null || project.pathfindingPaths.nodes == null )
+			return null;
+
+		var transformedNodes = [];
+		for( originalNode in (cast project.pathfindingPaths.nodes : Array<Dynamic>) ) {
+			var transformedConnections = [];
+			if( originalNode.connections != null ) {
+				for( originalConnection in (cast originalNode.connections : Array<Dynamic>) ) {
+					var connectionInfo = transformNodeIdForSimplified(originalConnection.nodeId);
+					transformedConnections.push({
+						id: connectionInfo.id,
+						chunk: originalConnection.chunk,
+						weight: originalConnection.weight
+					});
+				}
+			}
+			var nodeInfo = transformNodeIdForSimplified(originalNode.id);
+			var nodeEntry:Dynamic = {
+				id: nodeInfo.id,
+				chunks: nodeInfo.chunks,
+				connections: transformedConnections
+			};
+			var nodePositions = buildPositionsArray(originalNode);
+			if( nodePositions!=null )
+				untyped nodeEntry.positions = nodePositions;
+			transformedNodes.push(nodeEntry);
+		}
+
+		return { nodes: transformedNodes };
+	}
+
 	override function onDispose() {
 		super.onDispose();
 		QUEUE.remove(this);
@@ -468,117 +501,86 @@ class ProjectSaver extends dn.Process {
 					logState();
 					initDir(dirFp.full, "json");
 
-					// Collect all level data first
-					var mainLevels = [];
+					var wallsDirFp = dn.FilePath.fromDir( project.getAbsExternalFilesDir()+"/walls" );
+					initDir(wallsDirFp.full, "json");
+
+					var ops : Array<ui.modal.Progress.ProgressOp> = [];
+					ops.push({
+						label: "Generating pathfinding paths...",
+						cb: ()->{
+							data.PathfindingPaths.ensure(project);
+						},
+						isExpensive: true,
+					});
+
+					// Write simplified/main.json
+					ops.push({
+						label: "Writing simplified main.json...",
+						cb: ()->{
+							var mainLevels = [];
+							for(w in project.worlds)
+							for(l in w.levels)
+								mainLevels.push({ identifier:l.identifier, path:'simplified/' + l.identifier });
+
+							var mainFp = dirFp.clone();
+							mainFp.fileWithExt = "main.json";
+							NT.writeFileString(mainFp.full, dn.data.JsonPretty.stringify({ levels: mainLevels }, Full));
+						},
+					});
+
+					// Write simplified/pathfindingPoints.json
+					ops.push({
+						label: "Writing pathfindingPoints.json...",
+						cb: ()->{
+							var pathfindingFp = dirFp.clone();
+							pathfindingFp.fileWithExt = "pathfindingPoints.json";
+							var pathfindingData = buildPathfindingDataForSimplified();
+							if( pathfindingData==null )
+								pathfindingData = { nodes: [] };
+							NT.writeFileString(pathfindingFp.full, dn.data.JsonPretty.stringify(pathfindingData, Full));
+						},
+					});
+
+					// Write walls JSONs
 					for(w in project.worlds)
 					for(l in w.levels) {
-						mainLevels.push({
-							identifier: l.identifier,
-							path: 'simplified/' + l.identifier
-						});
-					}
-
-					// Write main.json first
-				var mainFp = dirFp.clone();
-				mainFp.fileWithExt = "main.json";
-				
-				// Przygotuj obiekt JSON z poziomami
-				var mainJson = { levels: mainLevels };
-
-				// Przygotuj dane pathfinding do osobnego pliku
-				var pathfindingData:Dynamic = null;
-				if (project.pathfindingPaths != null && project.pathfindingPaths.nodes != null) {
-					var transformedNodes = [];
-					for (originalNode in (cast project.pathfindingPaths.nodes : Array<Dynamic>)) {
-						var transformedConnections = [];
-						if (originalNode.connections != null) {
-							for (originalConnection in (cast originalNode.connections : Array<Dynamic>)) {
-								var connectionInfo = transformNodeIdForSimplified(originalConnection.nodeId);
-								transformedConnections.push({
-									id: connectionInfo.id,
-									chunk: originalConnection.chunk,
-									weight: originalConnection.weight
-								});
-							}
-						}
-						var nodeInfo = transformNodeIdForSimplified(originalNode.id);
-						var nodeEntry:Dynamic = {
-							id: nodeInfo.id,
-							chunks: nodeInfo.chunks,
-							connections: transformedConnections
-						};
-						var nodePositions = buildPositionsArray(originalNode);
-						if( nodePositions!=null )
-							untyped nodeEntry.positions = nodePositions;
-						transformedNodes.push(nodeEntry);
-					}
-					pathfindingData = { nodes: transformedNodes };
-				}
-
-				// Konwertuj główny obiekt JSON na string używając oryginalnej metody
-				var jsonStr = dn.data.JsonPretty.stringify(mainJson, Full);
-
-				NT.writeFileString(
-					mainFp.full,
-					jsonStr
-				);
-
-				if( pathfindingData!=null ) {
-					var pathfindingFp = dirFp.clone();
-					pathfindingFp.fileWithExt = "pathfindingPoints.json";
-					NT.writeFileString(
-						pathfindingFp.full,
-						dn.data.JsonPretty.stringify(pathfindingData, Full)
-					);
-				}
-
-				// Export walls folder with collision data for each level
-				var wallsDirFp = dn.FilePath.fromDir( project.getAbsExternalFilesDir()+"/walls" );
-				initDir(wallsDirFp.full, "json");
-				
-				for(w in project.worlds)
-				for(l in w.levels) {
-					// Generate collision layer for this level
-					l.generateCombinedCollisionLayer();
-					
-					// Build walls array from collisionLayer
-					var walls:Array<Array<Int>> = [];
-					if( l.collisionLayer != null ) {
-						for(y in 0...l.collisionLayer.length) {
-							var row = l.collisionLayer[y];
-							for(x in 0...row.length) {
-								if( row[x] == 1 ) {
-									walls.push([x+1, y+1]);
-								}
-							}
-						}
-					}
-					
-					// Write walls JSON file
-					var wallsJson = { walls: walls };
-					var wallsFp = wallsDirFp.clone();
-					wallsFp.fileWithExt = l.identifier + ".json";
-					NT.writeFileString( wallsFp.full, dn.data.JsonPretty.stringify( wallsJson, Minified ) );
-				}
-
-					// Process individual level files
-					var p = new ui.modal.Progress( "Simplified data...", ()->beginNextState() );
-					for(w in project.worlds)
-					for(l in w.levels) {
-						// Main level JSON
-						p.addOp({
-							label: l.identifier,
+						var l = l;
+						ops.push({
+							label: "Walls "+l.identifier,
 							cb: ()->{
-								// Build JSON
-								var simpleJson = l.toSimplifiedJson();
-
-								// Write JSON file
-								var fp = dirFp.clone();
-								fp.fileWithExt = l.identifier + ".json";
-								NT.writeFileString( fp.full, dn.data.JsonPretty.stringify( simpleJson, Full ) );
+								l.generateCombinedCollisionLayer();
+								var walls:Array<Array<Int>> = [];
+								if( l.collisionLayer != null ) {
+									for(y in 0...l.collisionLayer.length) {
+										var row = l.collisionLayer[y];
+										for(x in 0...row.length)
+											if( row[x] == 1 )
+												walls.push([x+1, y+1]);
+									}
+								}
+								var wallsFp = wallsDirFp.clone();
+								wallsFp.fileWithExt = l.identifier + ".json";
+								NT.writeFileString(wallsFp.full, dn.data.JsonPretty.stringify({ walls:walls }, Minified));
 							},
 						});
 					}
+
+					// Write simplified level files
+					for(w in project.worlds)
+					for(l in w.levels) {
+						var l = l;
+						ops.push({
+							label: l.identifier,
+							cb: ()->{
+								var simpleJson = l.toSimplifiedJson();
+								var fp = dirFp.clone();
+								fp.fileWithExt = l.identifier + ".json";
+								NT.writeFileString(fp.full, dn.data.JsonPretty.stringify(simpleJson, Full));
+							},
+						});
+					}
+
+					new ui.modal.Progress("Simplified export", ops, ()->beginNextState());
 				}
 				else {
 					if( NT.fileExists(dirFp.full) )

@@ -21,7 +21,7 @@ jobs:
     strategy:
       matrix:
         os: [ macos-latest ]   # arm64 runner (Apple Silicon)
-        haxe: [ 4.3.3 ]
+        haxe: [ 4.3.6 ]
       fail-fast: true
     runs-on: ${{ matrix.os }}
 
