@@ -275,11 +275,14 @@ class Level {
 				for (ruleMap in li.autoTilesCache) {
 					for (coordMap in ruleMap) {
 						for (tile in coordMap) {
-							layerArray.push({
+							var o : Dynamic = {
 								x: tile.x + li.pxTotalOffsetX,
 								y: tile.y + li.pxTotalOffsetY,
-								tileNumber: tile.tid
-							});
+								tileNumber: tile.tid,
+							};
+							if( tile.flips!=0 )
+								Reflect.setField(o, "flip", tile.flips);
+							layerArray.push(o);
 						}
 					}
 				}
