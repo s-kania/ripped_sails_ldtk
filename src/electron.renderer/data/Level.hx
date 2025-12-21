@@ -314,8 +314,8 @@ class Level {
 
 							entsArray.push({
 								id: ed.identifier,
-								x: eInf.x + li.pxTotalOffsetX,
-								y: eInf.y + li.pxTotalOffsetY,
+								x: eInf.x + li.pxTotalOffsetX + worldX,
+								y: eInf.y + li.pxTotalOffsetY + worldY,
 							});
 						}
 				}
