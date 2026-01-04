@@ -542,28 +542,13 @@ class ProjectSaver extends dn.Process {
 					});
 
 					// Write walls JSONs
-					for(w in project.worlds)
-					for(l in w.levels) {
-						var l = l;
-						ops.push({
-							label: "Walls "+l.identifier,
-							cb: ()->{
-								l.generateCombinedCollisionLayer();
-								var walls:Array<Array<Int>> = [];
-								if( l.collisionLayer != null ) {
-									for(y in 0...l.collisionLayer.length) {
-										var row = l.collisionLayer[y];
-										for(x in 0...row.length)
-											if( row[x] == 1 )
-												walls.push([x+1, y+1]);
-									}
-								}
-								var wallsFp = wallsDirFp.clone();
-								wallsFp.fileWithExt = l.identifier + ".json";
-								NT.writeFileString(wallsFp.full, dn.data.JsonPretty.stringify({ walls:walls }, Minified));
-							},
-						});
-					}
+					ops.push({
+						label: "Exporting walls...",
+						cb: () -> {
+							var e = new exporter.Walls();
+							e.run(project, project.filePath.full);
+						}
+					});
 
 					// Write simplified level files
 					for(w in project.worlds)
