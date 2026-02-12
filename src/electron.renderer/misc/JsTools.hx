@@ -1461,6 +1461,7 @@ class JsTools {
 				color: dn.Col.parseHex(rawIv.color),
 				tile: rawIv.tile,
 				groupUid: 0,
+				landNonTraversable: false,
 			}
 
 		var jVal = new J('<div class="intGridValue"></div>');
