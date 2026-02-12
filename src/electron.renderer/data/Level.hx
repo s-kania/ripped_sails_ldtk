@@ -239,7 +239,6 @@ class Level {
 
 			customFields: {},
 			layers : {},
-			intGridCsv : {},
 			entities : {},
 		}
 
@@ -289,15 +288,6 @@ class Level {
 				}
 			}
 
-			// Export intGridCsv for IntGrid layers
-			if( li.def.type == IntGrid ) {
-				var csv : Array<Int> = [];
-				for(cy in 0...li.cHei)
-				for(cx in 0...li.cWid)
-					csv.push( li.getIntGrid(cx,cy) );
-				Reflect.setField(simpleJson.intGridCsv, li.def.identifier, csv);
-			}
-
 			// Export auto-layer entity-mode results grouped by rule group name
 			if( (li.def.type == AutoLayer || li.def.type == IntGrid) && li.autoEntitiesCache != null ) {
 				for( ruleEntry in li.autoEntitiesCache.keyValueIterator() ) {
@@ -324,8 +314,8 @@ class Level {
 
 							entsArray.push({
 								id: ed.identifier,
-								x: eInf.x + li.pxTotalOffsetX + worldX,
-								y: eInf.y + li.pxTotalOffsetY + worldY,
+								x: eInf.x + li.pxTotalOffsetX,
+								y: eInf.y + li.pxTotalOffsetY,
 							});
 						}
 				}
@@ -978,94 +968,5 @@ class Level {
 		}
 		
 		return this.collisionLayer;
-	}
-
-	/** Generate land walls based on IntGrid values and rules marked as landNonTraversable **/
-	public function generateLandWalls() : Array<Array<Int>> {
-		var gridSize = _project.defaultGridSize;
-		var cWid = M.ceil(pxWid / gridSize);
-		var cHei = M.ceil(pxHei / gridSize);
-		
-		// Initialize empty 2D array
-		var landWalls : Array<Array<Int>> = [];
-		for (y in 0...cHei) {
-			var row = [];
-			for (x in 0...cWid) {
-				row.push(0);
-			}
-			landWalls.push(row);
-		}
-		
-		// Iterate through all layers
-		for (li in layerInstances) {
-			if (li.def.type == IntGrid) {
-				// Check IntGrid values marked as landNonTraversable
-				for (cy in 0...li.cHei) {
-					for (cx in 0...li.cWid) {
-						var value = li.getIntGrid(cx, cy);
-						if (value > 0) {
-							var valueDef = li.def.getIntGridValueDef(value);
-							if (valueDef != null && valueDef.landNonTraversable) {
-								if (cy < cHei && cx < cWid) {
-									landWalls[cy][cx] = 1;
-								}
-							}
-						}
-					}
-				}
-			}
-			
-			// Check auto-layer rules marked as landNonTraversable
-			if (li.def.isAutoLayer() && li.autoTilesCache != null) {
-				for (rg in li.def.autoRuleGroups) {
-					for (r in rg.rules) {
-						if (!r.landNonTraversable || !r.active)
-							continue;
-						
-						if (!li.autoTilesCache.exists(r.uid))
-							continue;
-						
-						var ruleResults = li.autoTilesCache.get(r.uid);
-						for (coordId in ruleResults.keys()) {
-							var tiles = ruleResults.get(coordId);
-							for (t in tiles) {
-								var cx = Std.int(t.x / li.def.gridSize);
-								var cy = Std.int(t.y / li.def.gridSize);
-								if (cy >= 0 && cy < cHei && cx >= 0 && cx < cWid) {
-									landWalls[cy][cx] = 1;
-								}
-							}
-						}
-					}
-				}
-			}
-			
-			// Check auto-layer entity rules marked as landNonTraversable
-			if (li.def.isAutoLayer() && li.autoEntitiesCache != null) {
-				for (rg in li.def.autoRuleGroups) {
-					for (r in rg.rules) {
-						if (!r.landNonTraversable || !r.active || !r.entityMode)
-							continue;
-						
-						if (!li.autoEntitiesCache.exists(r.uid))
-							continue;
-						
-						var entityResults = li.autoEntitiesCache.get(r.uid);
-						for (coordId in entityResults.keys()) {
-							var entities = entityResults.get(coordId);
-							for (e in entities) {
-								var cx = Std.int(e.x / li.def.gridSize);
-								var cy = Std.int(e.y / li.def.gridSize);
-								if (cy >= 0 && cy < cHei && cx >= 0 && cx < cWid) {
-									landWalls[cy][cx] = 1;
-								}
-							}
-						}
-					}
-				}
-			}
-		}
-		
-		return landWalls;
 	}
 }
