@@ -137,6 +137,7 @@ class LayerDef {
 					color: JsonTools.readColor(v.color),
 					tile: JsonTools.readTileRect(v.tile, true),
 					groupUid: JsonTools.readInt(v.groupUid, 0),
+					landNonTraversable: JsonTools.readBool(untyped v.landNonTraversable, false),
 				});
 				fixedIdx++;
 			}
@@ -208,6 +209,7 @@ class LayerDef {
 				color: JsonTools.writeColor(iv.color),
 				tile: JsonTools.writeTileRect(iv.tile),
 				groupUid: iv.groupUid,
+				landNonTraversable: iv.landNonTraversable,
 			}),
 
 			intGridValuesGroups: intGridValuesGroups.map(g->{
@@ -301,6 +303,7 @@ class LayerDef {
 			identifier: id,
 			tile: null,
 			groupUid: 0,
+			landNonTraversable: false,
 		});
 
 		return iv;
