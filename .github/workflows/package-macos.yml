@@ -3,9 +3,9 @@ name: package-macOS
 on:
   workflow_dispatch:
   push:
-    branches: [ master ]
+    branches: [ master, dev-master ]
   pull_request:
-    branches: [ master ]
+    branches: [ master, dev-master ]
 
 # Minimalne uprawnienia
 permissions:
