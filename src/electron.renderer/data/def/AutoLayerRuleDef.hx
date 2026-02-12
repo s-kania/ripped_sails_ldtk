@@ -37,6 +37,9 @@ class AutoLayerRuleDef {
 	public var entityMode = false;
 	public var entityDefUids : Array<Int> = [];
 
+	// Land non-traversable (for land walls export)
+	public var landNonTraversable = false;
+
 	var perlinActive = false;
 	public var perlinSeed : Int;
 	public var perlinScale : Float = 0.2;
@@ -185,6 +188,7 @@ class AutoLayerRuleDef {
 		// Add entity fields dynamically (not part of ldtk.Json.AutoRuleDef)
 		Reflect.setField(json, "entityMode", entityMode);
 		Reflect.setField(json, "entityDefUids", entityDefUids.copy());
+		Reflect.setField(json, "landNonTraversable", landNonTraversable);
 
 		return json;
 	}
@@ -238,6 +242,9 @@ class AutoLayerRuleDef {
 		// Entity mode fields
 		r.entityMode = JsonTools.readBool( (cast json).entityMode, false );
 		r.entityDefUids = JsonTools.readArray( (cast json).entityDefUids, [] );
+
+		// Land non-traversable
+		r.landNonTraversable = JsonTools.readBool( (cast json).landNonTraversable, false );
 
 		r.updateUsedValues();
 
