@@ -741,16 +741,6 @@ class EditLayerDefs extends ui.modal.Panel {
 							updateForm();
 						});
 
-						// Land non-traversable toggle
-						var jLandWall = jValue.find(".landWall");
-						jLandWall.find(".icon").addClass(intGridVal.landNonTraversable ? "checkboxOn" : "checkboxOff");
-						jLandWall.addClass(intGridVal.landNonTraversable ? "on" : "off");
-						jLandWall.click(function(_) {
-							intGridVal.landNonTraversable = !intGridVal.landNonTraversable;
-							editor.ge.emit(LayerDefChanged(cur.uid, false));
-							updateForm();
-						});
-
 						// Remove
 						jValue.find("button.remove").click( function(ev:js.jquery.Event) {
 							var jThis = ev.getThis();

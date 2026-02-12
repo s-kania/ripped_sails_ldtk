@@ -683,26 +683,6 @@ class EditAllAutoLayerRules extends ui.modal.Panel {
 				},
 			}));
 
-			// Check if any rule in the group has landNonTraversable set
-			var anyLandNonTraversable = false;
-			for(r in rg.rules)
-				if(r.landNonTraversable) {
-					anyLandNonTraversable = true;
-					break;
-				}
-
-			ctx.addActionElement({
-				label: L.t._("Land non-traversable (all rules)"),
-				subText: L.t._("Mark all tiles/entities from this group as non-traversable for land walls"),
-				cb: ()->{
-					var newValue = !anyLandNonTraversable;
-					for(r in rg.rules)
-						r.landNonTraversable = newValue;
-					editor.ge.emit( LayerRuleGroupChanged(rg) );
-				},
-				selectionTick: anyLandNonTraversable,
-			});
-
 			ctx.addElement( Ctx_Separator );
 
 			ctx.addActionElement({
@@ -1091,18 +1071,6 @@ class EditAllAutoLayerRules extends ui.modal.Panel {
 				},
 				delete: ()->deleteRule(rg, r),
 			}) );
-
-			ctx.addElement(Ctx_Separator);
-
-			ctx.addActionElement({
-				label: L.t._("Land non-traversable"),
-				subText: L.t._("Mark tiles/entities from this rule as non-traversable for land walls"),
-				cb: ()->{
-					r.landNonTraversable = !r.landNonTraversable;
-					editor.ge.emit( LayerRuleChanged(r) );
-				},
-				selectionTick: r.landNonTraversable,
-			});
 		});
 
 		if( rg.usesWizard )
