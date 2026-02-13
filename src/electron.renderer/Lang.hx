@@ -1,5 +1,3 @@
-import dn.data.GetText.LocaleString;
-
 class Lang {
 	// Text constants
 	public static var _Untagged = ()->t._("Untagged");
