@@ -49,5 +49,12 @@
 		"publish": ["github"]
 	},
 
-	"mac": {}
+	"mac": {
+		"identity": null,
+		"extraFiles": [
+			"extraFiles/embedAtlas",
+			"extraFiles/changelogImg",
+			"extraFiles/samples"
+		]
+	}
 }
