@@ -49,18 +49,12 @@ class Home extends Page {
 
 		// Buttons
 		jPage.find(".load").click( (_)->onLoad() );
-		jPage.find(".samples").click( (_)->{
-			if( settings.getUiStateBool(HideSamplesOnHome) )
-				showSamples();
-			else
-				hideSamples();
+		jPage.find(".shipEditor").click( (_)->{
+			App.ME.loadPage( ()->new page.ShipEditor() );
 		});
 		jPage.find(".allSamples .hide").click( (_)->hideSamples() );
 		jPage.find(".import").click( (ev)->onImport(ev) );
 		jPage.find(".new").click( (_)->if( !cd.hasSetS("newLock",0.2) ) onNew() );
-
-		if( !settings.getUiStateBool(HideSamplesOnHome) )
-			showSamples(false);
 
 		jPage.find(".support").click( (ev)->{
 			var w = new ui.Modal();

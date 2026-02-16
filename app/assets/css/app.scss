@@ -1284,6 +1284,7 @@ ul.log {
 .icon.love				{ background-image: url("../icons/love.svg"); }
 .icon.manual			{ background-image: url("../icons/manual.svg"); }
 .icon.new				{ background-image: url("../icons/new.svg"); }
+.icon.ship				{ background-image: url("../icons/ship.svg"); }
 .icon.offset			{ background-image: url("../icons/offset.svg"); }
 .icon.open				{ background-image: url("../icons/open.svg"); }
 .icon.optional			{ background-image: url("../icons/optional.svg"); }
@@ -11125,6 +11126,419 @@ $patternSize : 32px;
 					margin-bottom: 8px;
 					border-bottom: 1px solid $bgMed
 				}
+			}
+		}
+	}
+}
+
+// =============================================
+// Ship Editor Page
+// =============================================
+#page.shipEditor {
+	display: flex;
+	flex-direction: column;
+	width: 100vw;
+	height: 100vh;
+	background-color: $bgDark;
+	color: $almostWhite;
+	overflow: hidden;
+
+	.shipEditorWrapper {
+		display: flex;
+		flex-direction: column;
+		width: 100%;
+		height: 100%;
+	}
+
+	.topBar {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		padding: 8px 16px;
+		background-color: $bgMed;
+		border-bottom: 1px solid $bgLight;
+		flex-shrink: 0;
+
+		h1 {
+			margin: 0;
+			font-size: 14pt;
+			font-weight: bold;
+			color: $almostWhite;
+			border: none;
+			padding: 0;
+		}
+
+		.shipName {
+			font-size: 10pt;
+			color: $bgLighter;
+			font-style: italic;
+		}
+
+		.filler {
+			flex: 1;
+		}
+
+		button {
+			display: flex;
+			align-items: center;
+			gap: 4px;
+			padding: 4px 12px;
+			font-size: 9pt;
+		}
+	}
+
+	.navTabs {
+		display: flex;
+		gap: 2px;
+		padding: 4px 16px;
+		background-color: darken($bgMed, 2%);
+		border-bottom: 1px solid $bgLight;
+		flex-shrink: 0;
+
+		.tab {
+			display: flex;
+			align-items: center;
+			gap: 4px;
+			padding: 6px 14px;
+			font-size: 9pt;
+			background-color: $bgDark;
+			border: 1px solid transparent;
+			border-bottom: none;
+			border-radius: 4px 4px 0 0;
+			color: $bgLighter;
+			cursor: pointer;
+			transition: background-color 0.15s;
+
+			&:hover {
+				background-color: lighten($bgDark, 5%);
+			}
+
+			&.active {
+				background-color: $bgMed;
+				color: $almostWhite;
+				border-color: $bgLight;
+				font-weight: bold;
+			}
+		}
+	}
+
+	.screenContainer {
+		flex: 1;
+		overflow: auto;
+		padding: 16px;
+
+		.screen {
+			display: none;
+			&.active {
+				display: block;
+			}
+		}
+	}
+
+	// Opening screen
+	.screen.opening {
+		.openingContent {
+			max-width: 600px;
+			margin: 60px auto;
+			text-align: center;
+
+			h2 {
+				font-size: 22pt;
+				margin-bottom: 8px;
+				color: $almostWhite;
+				border: none;
+			}
+
+			p {
+				color: $bgLighter;
+				margin-bottom: 32px;
+			}
+
+			.openingButtons {
+				display: flex;
+				gap: 12px;
+				justify-content: center;
+				flex-wrap: wrap;
+
+				button {
+					display: flex;
+					align-items: center;
+					gap: 6px;
+					padding: 12px 24px;
+					font-size: 11pt;
+				}
+			}
+
+			.recentShipInfo {
+				margin-top: 20px;
+				font-size: 9pt;
+				color: $bgLighter;
+			}
+		}
+	}
+
+	// Direction switcher shared
+	.directionSwitcher {
+		display: flex;
+		gap: 4px;
+		flex-wrap: wrap;
+		margin: 8px 0;
+
+		.dirBtn {
+			padding: 4px 8px;
+			font-size: 9pt;
+			min-width: 32px;
+			text-align: center;
+			background-color: $bgDark;
+			border: 1px solid $bgLight;
+			border-radius: 3px;
+			color: $bgLighter;
+			cursor: pointer;
+
+			&:hover {
+				background-color: lighten($bgDark, 5%);
+			}
+
+			&.active {
+				background-color: $helpDark;
+				border-color: $help;
+				color: $help;
+				font-weight: bold;
+			}
+		}
+	}
+
+	// Params screen
+	.screen.params {
+		.paramsLayout {
+			display: grid;
+			grid-template-columns: 320px 1fr;
+			gap: 24px;
+			height: 100%;
+		}
+
+		.paramsForm {
+			h3 {
+				font-size: 10pt;
+				color: $help;
+				margin: 16px 0 8px;
+				padding-bottom: 4px;
+				border-bottom: 1px solid $bgLight;
+				&:first-child { margin-top: 0; }
+			}
+
+			.formGroup {
+				margin-bottom: 8px;
+
+				label {
+					display: block;
+					font-size: 8pt;
+					color: $bgLighter;
+					margin-bottom: 2px;
+				}
+
+				input {
+					width: 100%;
+					padding: 4px 8px;
+					font-size: 10pt;
+					background-color: $bgDark;
+					border: 1px solid $bgLight;
+					border-radius: 3px;
+					color: $almostWhite;
+					box-sizing: border-box;
+
+					&:focus {
+						border-color: $help;
+						outline: none;
+					}
+				}
+
+				button {
+					margin-top: 4px;
+					display: flex;
+					align-items: center;
+					gap: 4px;
+					font-size: 9pt;
+				}
+
+				.assetsPath {
+					margin-top: 4px;
+					font-size: 8pt;
+					color: $bgLighter;
+					word-break: break-all;
+				}
+			}
+		}
+
+		.paramsPreview {
+			display: flex;
+			flex-direction: column;
+			align-items: center;
+
+			.spritePreview {
+				flex: 1;
+				display: flex;
+				align-items: center;
+				justify-content: center;
+
+				canvas {
+					background-color: $bgMed;
+					border: 1px solid $bgLight;
+					border-radius: 4px;
+				}
+			}
+		}
+	}
+
+	// Grid screen
+	.screen.grid {
+		.gridLayout {
+			display: grid;
+			grid-template-columns: 280px 1fr;
+			gap: 24px;
+		}
+
+		.gridControls {
+			h3 {
+				font-size: 10pt;
+				color: $help;
+				margin: 0 0 8px;
+				padding-bottom: 4px;
+				border-bottom: 1px solid $bgLight;
+			}
+
+			p {
+				font-size: 8pt;
+				color: $bgLighter;
+				margin-bottom: 12px;
+			}
+
+			.gridInfo {
+				font-size: 8pt;
+				color: $bgLighter;
+				margin-top: 8px;
+			}
+		}
+
+		.gridCanvas {
+			display: flex;
+			align-items: center;
+			justify-content: center;
+
+			canvas {
+				background-color: $bgMed;
+				border: 1px solid $bgLight;
+				border-radius: 4px;
+			}
+		}
+	}
+
+	// Offsets screen
+	.screen.offsets {
+		.offsetsLayout {
+			display: grid;
+			grid-template-columns: 280px 1fr;
+			gap: 24px;
+		}
+
+		.offsetsControls {
+			h3 {
+				font-size: 10pt;
+				color: $help;
+				margin: 0 0 8px;
+				padding-bottom: 4px;
+				border-bottom: 1px solid $bgLight;
+			}
+
+			p {
+				font-size: 8pt;
+				color: $bgLighter;
+				margin-bottom: 12px;
+			}
+
+			.offsetInfo {
+				display: flex;
+				gap: 16px;
+				margin-top: 8px;
+				font-size: 10pt;
+				color: $orange;
+				font-family: monospace;
+			}
+		}
+
+		.offsetsCanvas {
+			display: flex;
+			align-items: center;
+			justify-content: center;
+
+			canvas {
+				background-color: $bgMed;
+				border: 1px solid $bgLight;
+				border-radius: 4px;
+				cursor: grab;
+
+				&:active {
+					cursor: grabbing;
+				}
+			}
+		}
+	}
+
+	// Cannons screen
+	.screen.cannons {
+		.cannonsLayout {
+			display: grid;
+			grid-template-columns: 280px 1fr;
+			gap: 24px;
+		}
+
+		.cannonsControls {
+			h3 {
+				font-size: 10pt;
+				color: $help;
+				margin: 0 0 8px;
+				padding-bottom: 4px;
+				border-bottom: 1px solid $bgLight;
+			}
+
+			p {
+				font-size: 8pt;
+				color: $bgLighter;
+				margin-bottom: 12px;
+			}
+
+			.cannonButtons {
+				display: flex;
+				flex-direction: column;
+				gap: 6px;
+				margin-top: 12px;
+
+				button {
+					display: flex;
+					align-items: center;
+					gap: 4px;
+					padding: 4px 10px;
+					font-size: 9pt;
+				}
+			}
+
+			.cannonInfo {
+				margin-top: 12px;
+				font-size: 8pt;
+				color: $bgLighter;
+			}
+		}
+
+		.cannonsCanvas {
+			display: flex;
+			align-items: center;
+			justify-content: center;
+
+			canvas {
+				background-color: $bgMed;
+				border: 1px solid $bgLight;
+				border-radius: 4px;
+				cursor: crosshair;
 			}
 		}
 	}
