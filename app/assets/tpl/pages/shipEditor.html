@@ -1,0 +1,171 @@
+<div class="shipEditorWrapper">
+	<div class="topBar">
+		<button class="backHome"><span class="icon back"></span> Back</button>
+		<h1>Ship Editor</h1>
+		<div class="shipName"></div>
+		<div class="filler"></div>
+		<button class="saveShip"><span class="icon save"></span> Save</button>
+	</div>
+
+	<div class="navTabs">
+		<button class="tab active" data-tab="opening"><span class="icon open"></span> Start</button>
+		<button class="tab" data-tab="params"><span class="icon settings"></span> Parameters</button>
+		<button class="tab" data-tab="grid"><span class="icon gridSnap"></span> Deck Grid</button>
+		<button class="tab" data-tab="offsets"><span class="icon move"></span> Visual Offsets</button>
+		<button class="tab" data-tab="cannons"><span class="icon pointRight"></span> Cannon Slots</button>
+	</div>
+
+	<div class="canvasControls"
+		style="display:none; flex-direction:column; align-items:flex-start; gap:4px; padding:4px 12px;">
+		<div style="display:flex; flex-direction:row; align-items:center; gap:8px;">
+			<label style="white-space:nowrap">Zoom:</label>
+			<input type="range" class="zoomSlider" min="25" max="400" value="100" step="5" style="width:120px" />
+			<span class="zoomValue" style="min-width:3em; text-align:center">100%</span>
+		</div>
+		<button class="resetView" style="width:220px; padding:2px 10px">Reset View</button>
+	</div>
+
+	<div class="screenContainer">
+		<!-- Opening screen -->
+		<div class="screen opening active">
+			<div class="openingContent">
+				<h2>Ship Editor</h2>
+				<p>Create and edit ship configurations for Ripped Sails</p>
+				<div class="openingButtons">
+					<button class="newShip"><span class="icon new"></span> New Ship</button>
+					<button class="openShip"><span class="icon open"></span> Open Ship JSON</button>
+					<button class="openRecent" style="display:none"><span class="icon recent"></span> Open
+						Recent</button>
+				</div>
+				<div class="recentShipInfo" style="display:none"></div>
+			</div>
+		</div>
+
+		<!-- Params screen -->
+		<div class="screen params">
+			<div class="paramsLayout">
+				<div class="paramsForm">
+					<h3>Ship Parameters</h3>
+					<div class="formGroup">
+						<label>Ship Type</label>
+						<input type="text" class="field shipType" value="small" />
+					</div>
+					<div class="formGroup">
+						<label>Max Cannons Per Side</label>
+						<input type="number" class="field maxCannons" value="3" min="0" max="20" />
+					</div>
+
+					<h3>Assets</h3>
+					<div class="formGroup">
+						<button class="selectAssets"><span class="icon open"></span> Select Assets Folder</button>
+						<div class="assetsPath"></div>
+					</div>
+					<div class="formGroup">
+						<label>File name prefix</label>
+						<input type="text" class="field assetPrefix" placeholder="e.g. sloop" />
+					</div>
+					<div class="formGroup">
+						<label>Asset Scale</label>
+						<input type="number" class="field assetScale" value="1" min="0.1" max="10" step="0.1" />
+					</div>
+				</div>
+				<div class="paramsPreview">
+					<div class="directionSwitcher"></div>
+					<div class="spritePreview">
+						<canvas class="previewCanvas"></canvas>
+					</div>
+				</div>
+			</div>
+		</div>
+
+		<!-- Grid screen -->
+		<div class="screen grid">
+			<div class="gridLayout">
+				<div class="gridControls">
+					<h3>Deck Grid Editor</h3>
+					<p>Click tiles to toggle them active/inactive. Right-click to set boarding point.</p>
+					<h4 style="margin-top:10px">Deck Grid Dimensions</h4>
+					<div class="formGroup">
+						<label>Width</label>
+						<input type="number" class="field gridWidth" value="4" min="1" max="32" />
+					</div>
+					<div class="formGroup">
+						<label>Height</label>
+						<input type="number" class="field gridHeight" value="9" min="1" max="32" />
+					</div>
+					<div class="formGroup">
+						<label>Tile Size</label>
+						<input type="number" class="field tileSize" value="16" min="4" max="64" />
+					</div>
+					<div class="gridInfo"></div>
+					<div class="undoControls gridUndo" style="display:none; margin-top:8px; gap:6px">
+						<button class="undoBtn" style="padding:2px 10px">↩ Undo</button>
+						<button class="resetDataBtn" style="padding:2px 10px">Reset to Saved</button>
+					</div>
+				</div>
+				<div class="gridCanvas">
+					<canvas class="deckGridCanvas"></canvas>
+				</div>
+			</div>
+		</div>
+
+		<!-- Offsets screen -->
+		<div class="screen offsets">
+			<div class="offsetsLayout">
+				<div class="offsetsControls">
+					<h3>Visual Offsets</h3>
+					<p>Drag the grid overlay to adjust visual offset for each direction.</p>
+					<div class="directionSwitcher"></div>
+					<div class="offsetInfo">
+						<span class="offsetX">X: 0</span>
+						<span class="offsetY">Y: 0</span>
+					</div>
+					<div class="undoControls offsetsUndo" style="display:none; margin-top:8px; gap:6px">
+						<button class="undoBtn" style="padding:2px 10px">↩ Undo</button>
+						<button class="resetDataBtn" style="padding:2px 10px">Reset to Saved</button>
+					</div>
+				</div>
+				<div class="offsetsCanvas">
+					<canvas class="visualOffsetsCanvas"></canvas>
+				</div>
+			</div>
+		</div>
+
+		<!-- Cannons screen -->
+		<div class="screen cannons">
+			<div class="cannonsLayout">
+				<div class="cannonsControls">
+					<h3>Cannon Slots</h3>
+					<p>Drag markers to position cannons on each direction.</p>
+					<p><span style="color:#4488ff">&#9679; Blue</span> = Left side &nbsp; <span
+							style="color:#ff4444">&#9679; Red</span> = Right side</p>
+					<div class="directionSwitcher"></div>
+					<div class="cannonButtons"
+						style="display: flex !important; flex-direction: row !important; align-items: center !important; gap: 8px !important;">
+						<span class="maxCannonsLabel" style="font-weight: bold; white-space: nowrap;">Max count: </span>
+						<span class="cannonCount" style="min-width: 1.5ch; text-align: center;">0</span>
+						<button class="addPair" style="margin-left: 4px;"><span class="icon add"></span> +</button>
+						<button class="removePair"><span class="icon delete"></span> -</button>
+					</div>
+					<p style="opacity:0.7; font-size:0.85em">Add/remove cannons in pairs (one per side). This sets
+						<em>max_cannons_per_side</em>.
+					</p>
+					<div class="cannonInfo"></div>
+					<div style="margin-top:6px">
+						<label><input type="checkbox" class="showCannonGrid" /> Show Visual Grid</label>
+					</div>
+					<div style="margin-top:4px">
+						<label><input type="checkbox" class="showCannonHelperLines" /> Show Helper Lines</label>
+					</div>
+					<div class="undoControls cannonsUndo" style="display:none; margin-top:8px; gap:6px">
+						<button class="undoBtn" style="padding:2px 10px">↩ Undo</button>
+						<button class="resetDataBtn" style="padding:2px 10px">Reset to Saved</button>
+					</div>
+				</div>
+				<div class="cannonsCanvas">
+					<canvas class="cannonSlotsCanvas"></canvas>
+				</div>
+			</div>
+		</div>
+	</div>
+</div>
