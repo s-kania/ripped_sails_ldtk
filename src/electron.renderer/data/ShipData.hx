@@ -254,15 +254,15 @@ class ShipData {
 			var pos:Dynamic = Reflect.field(swJson, "position");
 			if (pos != null) {
 				steeringWheelTile = {
-					tx: Reflect.hasField(pos, "tx") ? Std.int(Reflect.field(pos, "tx")) : 0,
-					ty: Reflect.hasField(pos, "ty") ? Std.int(Reflect.field(pos, "ty")) : 0
+					tx: Reflect.hasField(pos, "tx") ? Std.int(Reflect.field(pos, "tx")) - 1 : 0,
+					ty: Reflect.hasField(pos, "ty") ? Std.int(Reflect.field(pos, "ty")) - 1 : 0
 				};
 			}
 			var hmPos:Dynamic = Reflect.field(swJson, "helmsman_position");
 			if (hmPos != null) {
 				helmsmanTile = {
-					tx: Reflect.hasField(hmPos, "tx") ? Std.int(Reflect.field(hmPos, "tx")) : 0,
-					ty: Reflect.hasField(hmPos, "ty") ? Std.int(Reflect.field(hmPos, "ty")) : 0
+					tx: Reflect.hasField(hmPos, "tx") ? Std.int(Reflect.field(hmPos, "tx")) - 1 : 0,
+					ty: Reflect.hasField(hmPos, "ty") ? Std.int(Reflect.field(hmPos, "ty")) - 1 : 0
 				};
 			}
 		}
@@ -332,8 +332,8 @@ class ShipData {
 		if (steeringWheelAsset != null)
 			swObj.set("asset_folder", steeringWheelAsset);
 		swObj.set("asset_scale", steeringWheelScale);
-		swObj.set("position", {tx: steeringWheelTile.tx, ty: steeringWheelTile.ty});
-		swObj.set("helmsman_position", {tx: helmsmanTile.tx, ty: helmsmanTile.ty});
+		swObj.set("position", {tx: steeringWheelTile.tx + 1, ty: steeringWheelTile.ty + 1});
+		swObj.set("helmsman_position", {tx: helmsmanTile.tx + 1, ty: helmsmanTile.ty + 1});
 		json.set("steering_wheel", swObj);
 
 		return json;
