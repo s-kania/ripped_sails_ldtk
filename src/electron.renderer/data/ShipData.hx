@@ -56,6 +56,20 @@ typedef DirectionCannonSlots = {
 	right:Array<CannonSlot>
 }
 
+typedef PropSlot = {
+	x:Int,
+	y:Int
+}
+
+typedef TileSlot = {
+	tx:Int,
+	ty:Int
+}
+
+typedef DirectionPropSlots = {
+	slots:Array<PropSlot>
+}
+
 class ShipData {
 	public var filePath:Null<dn.FilePath>;
 	public var assetsPath:Null<dn.FilePath>;
@@ -69,6 +83,13 @@ class ShipData {
 	public var cannonSlots:Map<String, DirectionCannonSlots> = new Map();
 	public var visualOffsets:Map<String, VisualOffset> = new Map();
 
+	// Props
+	public var boardingPoints:Map<String, DirectionPropSlots> = new Map();
+	public var steeringWheelTile:TileSlot;
+	public var helmsmanTile:TileSlot;
+	public var steeringWheelAsset:Null<String> = null;
+	public var steeringWheelScale:Float = 1.0;
+
 	// Pass-through: store raw JSON to preserve unknown keys
 	var rawJson:Null<haxe.DynamicAccess<Dynamic>>;
 
@@ -80,10 +101,13 @@ class ShipData {
 			deck_tiles: [],
 			boarding_point: {x: 0, y: 0}
 		};
+		steeringWheelTile = {tx: 0, ty: 0};
+		helmsmanTile = {tx: 0, ty: 1};
 		for (dir in ShipDirection.all()) {
 			var d:String = dir;
 			cannonSlots.set(d, {left: [], right: []});
 			visualOffsets.set(d, {x: 0, y: 0});
+			boardingPoints.set(d, {slots: []});
 		}
 	}
 
@@ -202,6 +226,46 @@ class ShipData {
 				}
 			}
 		}
+
+		// boarding_points
+		var bpJson:Dynamic = Reflect.field(json, "boarding_points");
+		if (bpJson != null) {
+			for (dir in ShipDirection.all()) {
+				var d:String = dir;
+				var dirData:Dynamic = Reflect.field(bpJson, d);
+				if (dirData != null) {
+					var slotsArr:Array<PropSlot> = [];
+					var rawSlots:Array<Dynamic> = Reflect.field(dirData, "slots");
+					if (rawSlots != null)
+						for (s in rawSlots)
+							slotsArr.push({x: Std.int(Reflect.field(s, "x")), y: Std.int(Reflect.field(s, "y"))});
+					boardingPoints.set(d, {slots: slotsArr});
+				}
+			}
+		}
+
+		// steering_wheel
+		var swJson:Dynamic = Reflect.field(json, "steering_wheel");
+		if (swJson != null) {
+			if (Reflect.hasField(swJson, "asset_folder"))
+				steeringWheelAsset = Reflect.field(swJson, "asset_folder");
+			if (Reflect.hasField(swJson, "asset_scale"))
+				steeringWheelScale = Reflect.field(swJson, "asset_scale");
+			var pos:Dynamic = Reflect.field(swJson, "position");
+			if (pos != null) {
+				steeringWheelTile = {
+					tx: Reflect.hasField(pos, "tx") ? Std.int(Reflect.field(pos, "tx")) : 0,
+					ty: Reflect.hasField(pos, "ty") ? Std.int(Reflect.field(pos, "ty")) : 0
+				};
+			}
+			var hmPos:Dynamic = Reflect.field(swJson, "helmsman_position");
+			if (hmPos != null) {
+				helmsmanTile = {
+					tx: Reflect.hasField(hmPos, "tx") ? Std.int(Reflect.field(hmPos, "tx")) : 0,
+					ty: Reflect.hasField(hmPos, "ty") ? Std.int(Reflect.field(hmPos, "ty")) : 0
+				};
+			}
+		}
 	}
 
 	public function toJson():Dynamic {
@@ -251,6 +315,26 @@ class ShipData {
 			}
 		}
 		json.set("visual_offsets", voObj);
+
+		// boarding_points
+		var bpObj:haxe.DynamicAccess<Dynamic> = {};
+		for (dir in ShipDirection.all()) {
+			var d:String = dir;
+			var bp = boardingPoints.get(d);
+			if (bp != null) {
+				bpObj.set(d, {slots: bp.slots});
+			}
+		}
+		json.set("boarding_points", bpObj);
+
+		// steering_wheel
+		var swObj:haxe.DynamicAccess<Dynamic> = {};
+		if (steeringWheelAsset != null)
+			swObj.set("asset_folder", steeringWheelAsset);
+		swObj.set("asset_scale", steeringWheelScale);
+		swObj.set("position", {tx: steeringWheelTile.tx, ty: steeringWheelTile.ty});
+		swObj.set("helmsman_position", {tx: helmsmanTile.tx, ty: helmsmanTile.ty});
+		json.set("steering_wheel", swObj);
 
 		return json;
 	}
@@ -396,4 +480,15 @@ class ShipData {
 		}
 		return o;
 	}
+
+	public function getBoardingPoints(dir:ShipDirection):DirectionPropSlots {
+		var d:String = dir;
+		var bp = boardingPoints.get(d);
+		if (bp == null) {
+			bp = {slots: []};
+			boardingPoints.set(d, bp);
+		}
+		return bp;
+	}
+
 }

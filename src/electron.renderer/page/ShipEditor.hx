@@ -2,6 +2,7 @@ package page;
 
 import data.ShipData;
 import data.ShipData.CannonSlot;
+import data.ShipData.PropSlot;
 import data.ShipData.ShipDirection;
 import js.html.CanvasElement;
 import js.html.CanvasRenderingContext2D;
@@ -51,6 +52,19 @@ class ShipEditor extends Page {
 	var showCannonGrid:Bool = false;
 	var showCannonHelperLines:Bool = false;
 
+	// Props state
+	var currentPropType:String = "boarding_points";
+	var showPropsGrid:Bool = false;
+	var showPropsHelperLines:Bool = false;
+	var savedPropsState:Null<String> = null;
+	var wheelImages:Map<String, Image> = new Map();
+	var wheelImagesLoaded:Bool = false;
+	var dragPropIdx:Int = -1;
+	var dragPropType:Null<String> = null;
+	var wheelPlacementMode:String = "wheel"; // "wheel" or "helmsman"
+	var hoveredTileX:Int = -1;
+	var hoveredTileY:Int = -1;
+
 	public function new() {
 		super();
 		ME = this;
@@ -65,6 +79,7 @@ class ShipEditor extends Page {
 		initGridScreen();
 		initOffsetsScreen();
 		initCannonsScreen();
+		initPropsScreen();
 
 		// Check for recent ship file
 		var recentDir = App.ME.settings.getUiDir("ShipEditor", null);
@@ -118,6 +133,8 @@ class ShipEditor extends Page {
 					renderOffsetsCanvas();
 				case "cannons":
 					renderCannonsCanvas();
+				case "props":
+					renderPropsCanvas();
 				default:
 			}
 		}
@@ -158,7 +175,8 @@ class ShipEditor extends Page {
 			".previewCanvas",
 			".deckGridCanvas",
 			".visualOffsetsCanvas",
-			".cannonSlotsCanvas"
+			".cannonSlotsCanvas",
+			".propsCanvasEl"
 		]) {
 			var el = jPage.find(cls).get(0);
 			if (el != null) {
@@ -178,7 +196,8 @@ class ShipEditor extends Page {
 			".previewCanvas",
 			".deckGridCanvas",
 			".visualOffsetsCanvas",
-			".cannonSlotsCanvas"
+			".cannonSlotsCanvas",
+			".propsCanvasEl"
 		]) {
 			var el = jPage.find(cls).get(0);
 			if (el != null) {
@@ -222,6 +241,8 @@ class ShipEditor extends Page {
 				renderOffsetsCanvas();
 			case "cannons":
 				renderCannonsCanvas();
+			case "props":
+				renderPropsCanvas();
 			default:
 		}
 	}
@@ -273,6 +294,9 @@ class ShipEditor extends Page {
 			case "cannons":
 				updateCannonInfo();
 				renderCannonsCanvas();
+			case "props":
+				updatePropInfo();
+				renderPropsCanvas();
 			default:
 		}
 	}
@@ -344,6 +368,7 @@ class ShipEditor extends Page {
 		savedGridState = captureGridState();
 		savedOffsetsState = captureOffsetsState();
 		savedCannonsState = captureCannonsState();
+		savedPropsState = capturePropsState();
 		updateDirtyIndicators();
 
 		// Set default asset prefix from file name if not set
@@ -370,6 +395,17 @@ class ShipEditor extends Page {
 			updateAssetsPathDisplay();
 			loadSpriteAssets();
 		}
+
+		// Load wheel assets if path is set
+		if (ship.steeringWheelAsset != null) {
+			var wParts = ship.steeringWheelAsset.split("|");
+			if (wParts.length == 2)
+				jPage.find(".wheelAssetPath").text(wParts[0] + " / " + wParts[1] + "_*.png");
+			else
+				jPage.find(".wheelAssetPath").text(ship.steeringWheelAsset);
+			loadWheelAssets();
+		}
+		jPage.find(".wheelScaleInput").val(ship.steeringWheelScale);
 
 		switchTab("params");
 	}
@@ -709,6 +745,7 @@ class ShipEditor extends Page {
 			case "grid": captureGridState();
 			case "offsets": captureOffsetsState();
 			case "cannons": captureCannonsState();
+			case "props": capturePropsState();
 			default: return;
 		};
 		undoStack.push({tab: tab, snapshot: snapshot});
@@ -732,6 +769,10 @@ class ShipEditor extends Page {
 				restoreCannonsState(entry.snapshot);
 				updateCannonInfo();
 				renderCannonsCanvas();
+			case "props":
+				restorePropsState(entry.snapshot);
+				updatePropInfo();
+				renderPropsCanvas();
 			default:
 		}
 		updateDirtyIndicators();
@@ -759,6 +800,13 @@ class ShipEditor extends Page {
 					updateCannonInfo();
 					renderCannonsCanvas();
 				}
+			case "props":
+				if (savedPropsState != null) {
+					pushUndo("props");
+					restorePropsState(savedPropsState);
+					updatePropInfo();
+					renderPropsCanvas();
+				}
 			default:
 		}
 		updateDirtyIndicators();
@@ -768,10 +816,12 @@ class ShipEditor extends Page {
 		var gridDirty = savedGridState != null && captureGridState() != savedGridState;
 		var offsetsDirty = savedOffsetsState != null && captureOffsetsState() != savedOffsetsState;
 		var cannonsDirty = savedCannonsState != null && captureCannonsState() != savedCannonsState;
+		var propsDirty = savedPropsState != null && capturePropsState() != savedPropsState;
 
 		jPage.find(".gridUndo").css("display", gridDirty ? "flex" : "none");
 		jPage.find(".offsetsUndo").css("display", offsetsDirty ? "flex" : "none");
 		jPage.find(".cannonsUndo").css("display", cannonsDirty ? "flex" : "none");
+		jPage.find(".propsUndo").css("display", propsDirty ? "flex" : "none");
 	}
 
 	function initUndoControls() {
@@ -795,6 +845,13 @@ class ShipEditor extends Page {
 		});
 		jPage.find(".cannonsUndo .resetDataBtn").click((_) -> {
 			resetTabData("cannons");
+		});
+		// Props undo/reset
+		jPage.find(".propsUndo .undoBtn").click((_) -> {
+			performUndo();
+		});
+		jPage.find(".propsUndo .resetDataBtn").click((_) -> {
+			resetTabData("props");
 		});
 	}
 
@@ -1055,6 +1112,25 @@ class ShipEditor extends Page {
 		var rotY = virtualX * rot.sin + virtualY * rot.cos;
 
 		return {x: rotX, y: rotY * ISO_Y_SCALE};
+	}
+
+	function screenToTile(sx:Float, sy:Float, dir:ShipDirection):{tx:Int, ty:Int} {
+		if (ship == null)
+			return {tx: 0, ty: 0};
+
+		// Undo ISO scaling
+		var unscaledY = sy / ISO_Y_SCALE;
+		var rot = getRotationForDirection(dir);
+		// Inverse rotation: transpose of rotation matrix
+		var virtualX = sx * rot.cos + unscaledY * rot.sin;
+		var virtualY = -sx * rot.sin + unscaledY * rot.cos;
+
+		var centerX = ship.deckGrid.width / 2.0;
+		var centerY = ship.deckGrid.height / 2.0;
+		var tileX = virtualX / ship.deckGrid.tile_size + centerX;
+		var tileY = virtualY / ship.deckGrid.tile_size + centerY;
+
+		return {tx: Std.int(Math.floor(tileX)), ty: Std.int(Math.floor(tileY))};
 	}
 
 	function drawIsoGrid(ctx:CanvasRenderingContext2D, cx:Float, cy:Float, dir:ShipDirection, alphaMultiplier:Float = 1.0) {
@@ -1380,6 +1456,544 @@ class ShipEditor extends Page {
 			ctx.stroke();
 			y -= step;
 		}
+	}
+
+	// =========================================================================
+	// Props Screen
+	// =========================================================================
+
+	function initPropsScreen() {
+		// Prop type switcher
+		jPage.find(".propTypeBtn").click((ev:js.jquery.Event) -> {
+			var jBtn = new J(ev.currentTarget);
+			var propType = jBtn.attr("data-prop");
+			if (propType == null)
+				return;
+			currentPropType = propType;
+			jPage.find(".propTypeBtn").removeClass("active");
+			jBtn.addClass("active");
+			jPage.find(".propConfig").hide();
+			jPage.find('.propConfig-$propType').show();
+			// Rebuild direction switchers inside props configs
+			jPage.find(".screen.props .directionSwitcher").each((idx, el) -> {
+				buildDirectionSwitcher(new J(el));
+			});
+			updatePropInfo();
+			renderPropsCanvas();
+		});
+
+		// Visual grid overlay toggle
+		jPage.find(".showPropsGrid").on("change", (_) -> {
+			showPropsGrid = jPage.find(".showPropsGrid").is(":checked");
+			renderPropsCanvas();
+		});
+		// Helper lines toggle
+		jPage.find(".showPropsHelperLines").on("change", (_) -> {
+			showPropsHelperLines = jPage.find(".showPropsHelperLines").is(":checked");
+			renderPropsCanvas();
+		});
+
+		// Boarding Points: Add
+		jPage.find(".addPropPoint").click((_) -> {
+			if (ship == null)
+				return;
+			pushUndo("props");
+			var bp = ship.getBoardingPoints(currentDirection);
+			bp.slots.push({x: 0, y: 20});
+			updatePropInfo();
+			renderPropsCanvas();
+			updateDirtyIndicators();
+		});
+
+		// Boarding Points: Remove
+		jPage.find(".removePropPoint").click((_) -> {
+			if (ship == null)
+				return;
+			pushUndo("props");
+			var bp = ship.getBoardingPoints(currentDirection);
+			if (bp.slots.length > 0)
+				bp.slots.pop();
+			updatePropInfo();
+			renderPropsCanvas();
+			updateDirtyIndicators();
+		});
+
+		// Wheel assets: Select Folder
+		jPage.find(".selectWheelAssets").click((_) -> {
+			if (ship == null)
+				return;
+			var dir = ship.assetsPath != null ? ship.assetsPath.full : (ship.filePath != null ? ship.filePath.directory : App.ME.getDefaultDialogDir());
+			dn.js.ElectronDialogs.openDir(dir, (dirPath) -> {
+				if (dirPath == null)
+					return;
+				// Auto-detect prefix using raw JS, returning detailed JSON result for debugging
+				var scanResultJson:String = js.Syntax.code("(function(dir) {
+					try {
+						var fs = require('fs');
+						if (!fs.existsSync(dir)) return JSON.stringify({error: 'Directory does not exist'});
+						var files = fs.readdirSync(dir);
+						var pngs = [];
+						for (var i = 0; i < files.length; i++) {
+							if (files[i].toLowerCase().endsWith('.png')) {
+								pngs.push(files[i]);
+								if (files[i].toLowerCase().endsWith('_n.png')) {
+									return JSON.stringify({prefix: files[i].substring(0, files[i].length - 6), pngCount: pngs.length});
+								}
+							}
+						}
+						return JSON.stringify({error: 'No file ending with _n.png found', filesFound: pngs.slice(0, 5).join(', ')});
+					} catch(e) { return JSON.stringify({error: e.toString()}); }
+				})({0})", dirPath);
+
+				var result:Dynamic = haxe.Json.parse(scanResultJson);
+
+				if (Reflect.hasField(result, "error")) {
+					var err = Reflect.field(result, "error");
+					var filesFound = Reflect.hasField(result, "filesFound") ? Reflect.field(result, "filesFound") : "none";
+					js.Browser.window.alert("Could not load wheel assets!\n\nReason: " + err + "\nPNGs found in folder: " + filesFound + "\n\nPlease ensure your north-facing wheel is named ending with '_n.png' (e.g. helm_wheel_n.png).");
+					return;
+				}
+
+				var detectedPrefix:String = Reflect.field(result, "prefix");
+				js.Browser.window.alert("Successfully loaded wheel assets!\nDetected prefix: " + detectedPrefix);
+
+				ship.steeringWheelAsset = dirPath + "|" + detectedPrefix;
+				jPage.find(".wheelAssetPath").text(dirPath + " / " + detectedPrefix + "_*.png");
+				loadWheelAssets();
+			});
+		});
+
+		// Wheel assets: Scale
+		jPage.find(".wheelScaleInput").on("input change", (ev:js.jquery.Event) -> {
+			if (ship == null)
+				return;
+			var jInput = new J(ev.currentTarget);
+			var val = Std.parseFloat(jInput.val());
+			if (!Math.isNaN(val) && val > 0) {
+				ship.steeringWheelScale = val;
+				renderPropsCanvas();
+				updateDirtyIndicators();
+			}
+		});
+
+		// Wheel placement mode buttons
+		jPage.find(".wheelModeBtn").click((ev:js.jquery.Event) -> {
+			var jBtn = new J(ev.currentTarget);
+			var mode = jBtn.attr("data-mode");
+			if (mode != null) {
+				wheelPlacementMode = mode;
+				jPage.find(".wheelModeBtn").removeClass("active");
+				jBtn.addClass("active");
+				renderPropsCanvas();
+			}
+		});
+
+		// Canvas interaction
+		var canvas:CanvasElement = cast jPage.find(".propsCanvasEl").get(0);
+		if (canvas == null)
+			return;
+
+		canvas.addEventListener("mousedown", (ev:js.html.MouseEvent) -> {
+			if (ship == null || ev.button != 0)
+				return;
+			var rect = canvas.getBoundingClientRect();
+			var mx = screenToWorldX(ev.clientX - rect.left, canvas.width);
+			var my = screenToWorldY(ev.clientY - rect.top, canvas.height);
+			var spriteCX = canvas.width / 2;
+			var spriteCY = canvas.height / 2;
+
+			if (currentPropType == "boarding_points") {
+				// Drag-based for boarding points
+				var bestDist = 15.0 / canvasZoom;
+				var bp = ship.getBoardingPoints(currentDirection);
+				for (i in 0...bp.slots.length) {
+					var s = bp.slots[i];
+					var dx = (spriteCX + s.x) - mx;
+					var dy = (spriteCY - s.y) - my;
+					var dist = Math.sqrt(dx * dx + dy * dy);
+					if (dist < bestDist) {
+						bestDist = dist;
+						pushUndo("props");
+						isDragging = true;
+						dragPropType = "boarding_points";
+						dragPropIdx = i;
+						dragStartX = mx;
+						dragStartY = my;
+						dragOffsetStartX = s.x;
+						dragOffsetStartY = s.y;
+					}
+				}
+			} else if (currentPropType == "steering_wheel") {
+				// Click-to-place on tile for steering wheel / helmsman
+				var off = ship.getVisualOffset(currentDirection);
+				var relX = mx - spriteCX - off.x;
+				var relY = my - spriteCY + off.y;
+				var tile = screenToTile(relX, relY, currentDirection);
+				// Validate tile is within grid bounds
+				if (tile.tx >= 0 && tile.tx < ship.deckGrid.width && tile.ty >= 0 && tile.ty < ship.deckGrid.height) {
+					pushUndo("props");
+					if (wheelPlacementMode == "helmsman") {
+						ship.helmsmanTile.tx = tile.tx;
+						ship.helmsmanTile.ty = tile.ty;
+					} else {
+						ship.steeringWheelTile.tx = tile.tx;
+						ship.steeringWheelTile.ty = tile.ty;
+					}
+					updatePropInfo();
+					renderPropsCanvas();
+					updateDirtyIndicators();
+				}
+			}
+		});
+
+		canvas.addEventListener("mousemove", (ev:js.html.MouseEvent) -> {
+			if (ship == null)
+				return;
+			var rect = canvas.getBoundingClientRect();
+			var mx = screenToWorldX(ev.clientX - rect.left, canvas.width);
+			var my = screenToWorldY(ev.clientY - rect.top, canvas.height);
+
+			if (isDragging && dragPropType == "boarding_points") {
+				var dx = mx - dragStartX;
+				var dy = my - dragStartY;
+				var bp = ship.getBoardingPoints(currentDirection);
+				if (dragPropIdx >= 0 && dragPropIdx < bp.slots.length) {
+					bp.slots[dragPropIdx].x = Std.int(dragOffsetStartX + dx);
+					bp.slots[dragPropIdx].y = Std.int(dragOffsetStartY - dy);
+					updatePropInfo();
+					renderPropsCanvas();
+				}
+			} else if (currentPropType == "steering_wheel") {
+				// Track hovered tile for preview highlight
+				var spriteCX = canvas.width / 2;
+				var spriteCY = canvas.height / 2;
+				var off = ship.getVisualOffset(currentDirection);
+				var relX = mx - spriteCX - off.x;
+				var relY = my - spriteCY + off.y;
+				var tile = screenToTile(relX, relY, currentDirection);
+				if (tile.tx != hoveredTileX || tile.ty != hoveredTileY) {
+					hoveredTileX = tile.tx;
+					hoveredTileY = tile.ty;
+					renderPropsCanvas();
+				}
+			}
+		});
+
+		canvas.addEventListener("mouseup", (_) -> {
+			isDragging = false;
+			dragPropType = null;
+			dragPropIdx = -1;
+			updateDirtyIndicators();
+		});
+
+		canvas.addEventListener("mouseleave", (_) -> {
+			isDragging = false;
+			dragPropType = null;
+			dragPropIdx = -1;
+			if (hoveredTileX != -1 || hoveredTileY != -1) {
+				hoveredTileX = -1;
+				hoveredTileY = -1;
+				renderPropsCanvas();
+			}
+		});
+	}
+
+	function loadWheelAssets() {
+		if (ship == null || ship.steeringWheelAsset == null)
+			return;
+
+		// Parse "folder|prefix" format
+		var parts = ship.steeringWheelAsset.split("|");
+		if (parts.length != 2)
+			return;
+		var folderPath = parts[0];
+		var prefix = parts[1];
+
+		wheelImages = new Map();
+		wheelImagesLoaded = false;
+		var loadedCount = 0;
+		var totalCount = 8;
+
+		for (dir in ShipDirection.all()) {
+			var d:String = dir;
+			var suffix = dir.toFileSuffix();
+			var path = folderPath + "/" + prefix + "_" + suffix + ".png";
+			if (NT.fileExists(path)) {
+				var img = new Image();
+				var dirKey = d;
+				img.onload = () -> {
+					wheelImages.set(dirKey, img);
+					loadedCount++;
+					if (loadedCount >= totalCount) {
+						wheelImagesLoaded = true;
+						renderPropsCanvas();
+					}
+				};
+				img.onerror = () -> {
+					loadedCount++;
+					if (loadedCount >= totalCount) {
+						wheelImagesLoaded = true;
+						renderPropsCanvas();
+					}
+				};
+				img.src = "data:image/png;base64," + haxe.crypto.Base64.encode(NT.readFileBytes(path));
+			} else {
+				loadedCount++;
+				if (loadedCount >= totalCount) {
+					wheelImagesLoaded = true;
+					renderPropsCanvas();
+				}
+			}
+		}
+	}
+
+	function updatePropInfo() {
+		if (ship == null)
+			return;
+		var d:String = currentDirection;
+		if (currentPropType == "boarding_points") {
+			var bp = ship.getBoardingPoints(currentDirection);
+			jPage.find(".propConfig-boarding_points .propCount").text(Std.string(bp.slots.length));
+			var info = 'Direction: $d | Points: ${bp.slots.length}';
+			jPage.find(".propConfig-boarding_points .propInfo").html(info);
+		} else if (currentPropType == "steering_wheel") {
+			var sw = ship.steeringWheelTile;
+			var hm = ship.helmsmanTile;
+			var info = 'Wheel Tile: (${sw.tx}, ${sw.ty}) | Helmsman Tile: (${hm.tx}, ${hm.ty})';
+			jPage.find(".propConfig-steering_wheel .propInfo").html(info);
+		}
+	}
+
+	function capturePropsState():String {
+		if (ship == null)
+			return "{}";
+		var bpObj:haxe.DynamicAccess<Dynamic> = {};
+		for (dir in ShipDirection.all()) {
+			var d:String = dir;
+			var bp = ship.getBoardingPoints(dir);
+			bpObj.set(d, {slots: [for (s in bp.slots) {x: s.x, y: s.y}]});
+		}
+		return haxe.Json.stringify({
+			boarding_points: bpObj,
+			steering_wheel: {tx: ship.steeringWheelTile.tx, ty: ship.steeringWheelTile.ty},
+			helmsman: {tx: ship.helmsmanTile.tx, ty: ship.helmsmanTile.ty},
+			steering_wheel_asset: ship.steeringWheelAsset
+		});
+	}
+
+	function restorePropsState(json:String) {
+		if (ship == null)
+			return;
+		try {
+			var obj:Dynamic = haxe.Json.parse(json);
+			var bpData:haxe.DynamicAccess<Dynamic> = obj.boarding_points;
+			for (dir in ShipDirection.all()) {
+				var d:String = dir;
+				var bpDir:Dynamic = bpData.get(d);
+				if (bpDir != null) {
+					var slotsArr:Array<Dynamic> = bpDir.slots;
+					var bp = ship.getBoardingPoints(dir);
+					bp.slots = [for (s in slotsArr) {x: Std.int(s.x), y: Std.int(s.y)}];
+				}
+			}
+			var swDir:Dynamic = obj.steering_wheel;
+			if (swDir != null) {
+				ship.steeringWheelTile.tx = Reflect.hasField(swDir, "tx") ? Std.int(swDir.tx) : 0;
+				ship.steeringWheelTile.ty = Reflect.hasField(swDir, "ty") ? Std.int(swDir.ty) : 0;
+			}
+			var hmDir:Dynamic = obj.helmsman;
+			if (hmDir != null) {
+				ship.helmsmanTile.tx = Reflect.hasField(hmDir, "tx") ? Std.int(hmDir.tx) : 0;
+				ship.helmsmanTile.ty = Reflect.hasField(hmDir, "ty") ? Std.int(hmDir.ty) : 0;
+			}
+			if (Reflect.hasField(obj, "steering_wheel_asset"))
+				ship.steeringWheelAsset = obj.steering_wheel_asset;
+		} catch (_) {}
+	}
+
+	function renderPropsCanvas() {
+		var canvas:CanvasElement = cast jPage.find(".propsCanvasEl").get(0);
+		if (canvas == null || ship == null)
+			return;
+
+		var sz = getCanvasSize();
+		canvas.width = sz.w;
+		canvas.height = sz.h;
+		var ctx = canvas.getContext2d();
+		ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+		ctx.save();
+		ctx.translate(canvas.width / 2 + canvasPanX, canvas.height / 2 + canvasPanY);
+		ctx.scale(canvasZoom, canvasZoom);
+		ctx.translate(-canvas.width / 2, -canvas.height / 2);
+
+		var spriteCX = canvas.width / 2;
+		var spriteCY = canvas.height / 2;
+
+		// Draw sprite
+		var d:String = currentDirection;
+		var img = spriteImages.get(d);
+		if (img != null) {
+			var drawW = img.width * assetScale;
+			var drawH = img.height * assetScale;
+			ctx.drawImage(img, spriteCX - drawW / 2, spriteCY - drawH / 2, drawW, drawH);
+			ctx.strokeStyle = "rgba(255,255,255,0.3)";
+			ctx.lineWidth = 1;
+			ctx.strokeRect(Std.int(spriteCX - drawW / 2) + 0.5, Std.int(spriteCY - drawH / 2) + 0.5, drawW - 1, drawH - 1);
+		} else {
+			ctx.fillStyle = "#333";
+			ctx.fillRect(spriteCX - 50, spriteCY - 75, 100, 150);
+		}
+
+		// Draw crosshair at center
+		ctx.strokeStyle = "rgba(255,255,255,0.2)";
+		ctx.lineWidth = 1;
+		ctx.beginPath();
+		ctx.moveTo(spriteCX, 0);
+		ctx.lineTo(spriteCX, canvas.height);
+		ctx.moveTo(0, spriteCY);
+		ctx.lineTo(canvas.width, spriteCY);
+		ctx.stroke();
+
+		// Draw optional visual grid overlay — auto-enabled for steering_wheel
+		if (showPropsGrid || currentPropType == "steering_wheel") {
+			var off = ship.getVisualOffset(currentDirection);
+			drawIsoGrid(ctx, spriteCX + off.x, spriteCY - off.y, currentDirection, 0.5);
+		}
+
+		// Draw optional helper lines
+		if (showPropsHelperLines) {
+			drawHelperLines(ctx, spriteCX, spriteCY, canvas.width, canvas.height);
+		}
+
+		// Draw prop markers based on current type
+		if (currentPropType == "boarding_points") {
+			var bp = ship.getBoardingPoints(currentDirection);
+			drawPropMarkers(ctx, spriteCX, spriteCY, bp.slots, "#44cc44", "B");
+		} else if (currentPropType == "steering_wheel") {
+			var off = ship.getVisualOffset(currentDirection);
+			var gridCX = spriteCX + off.x;
+			var gridCY = spriteCY - off.y;
+
+			// Draw hovered tile highlight
+			if (hoveredTileX >= 0 && hoveredTileX < ship.deckGrid.width && hoveredTileY >= 0 && hoveredTileY < ship.deckGrid.height) {
+				drawTileHighlight(ctx, gridCX, gridCY, hoveredTileX, hoveredTileY, currentDirection,
+					wheelPlacementMode == "helmsman" ? "rgba(100,150,255,0.3)" : "rgba(255,200,50,0.3)");
+			}
+
+			// Draw steering wheel at tile position
+			var sw = ship.steeringWheelTile;
+			var swScreen = tileToScreen(sw.tx + 0.5, sw.ty + 0.5, currentDirection);
+			var sx = gridCX + swScreen.x;
+			var sy = gridCY + swScreen.y;
+
+			// Draw wheel sprite if available
+			var wheelImg = wheelImages.get(d);
+			if (wheelImg != null) {
+				var customScale = ship.steeringWheelScale != null ? ship.steeringWheelScale : 1.0;
+				var wW = wheelImg.width * assetScale * customScale;
+				var wH = wheelImg.height * assetScale * customScale;
+				ctx.drawImage(wheelImg, sx - wW / 2, sy - wH / 2, wW, wH);
+			}
+
+			// Wheel marker (gold diamond)
+			ctx.save();
+			ctx.translate(sx, sy);
+			ctx.rotate(Math.PI / 4);
+			ctx.fillStyle = "#cca922";
+			ctx.fillRect(-5, -5, 10, 10);
+			ctx.strokeStyle = "#ffffff";
+			ctx.lineWidth = 1.5;
+			ctx.strokeRect(-5, -5, 10, 10);
+			ctx.restore();
+			ctx.fillStyle = "#ffffff";
+			ctx.font = "9px sans-serif";
+			ctx.textAlign = "center";
+			ctx.textBaseline = "top";
+			ctx.fillText("W", sx, sy + 8);
+
+			// Draw helmsman marker at tile position
+			var hm = ship.helmsmanTile;
+			var hmScreen = tileToScreen(hm.tx + 0.5, hm.ty + 0.5, currentDirection);
+			var hx = gridCX + hmScreen.x;
+			var hy = gridCY + hmScreen.y;
+
+			ctx.beginPath();
+			ctx.arc(hx, hy, 6, 0, Math.PI * 2);
+			ctx.fillStyle = "#4488ff";
+			ctx.fill();
+			ctx.strokeStyle = "#ffffff";
+			ctx.lineWidth = 1.5;
+			ctx.stroke();
+			ctx.fillStyle = "#ffffff";
+			ctx.font = "9px sans-serif";
+			ctx.textAlign = "center";
+			ctx.textBaseline = "middle";
+			ctx.fillText("H", hx, hy);
+		}
+
+		ctx.restore();
+	}
+
+	function drawPropMarkers(ctx:CanvasRenderingContext2D, cx:Float, cy:Float, slots:Array<PropSlot>, color:String, label:String) {
+		var r = 6.0;
+		for (i in 0...slots.length) {
+			var s = slots[i];
+			var sx = cx + s.x;
+			var sy = cy - s.y;
+
+			ctx.beginPath();
+			ctx.arc(sx, sy, r, 0, Math.PI * 2);
+			ctx.fillStyle = color;
+			ctx.fill();
+			ctx.strokeStyle = "#ffffff";
+			ctx.lineWidth = 1.5;
+			ctx.stroke();
+
+			ctx.fillStyle = "#ffffff";
+			ctx.font = "9px sans-serif";
+			ctx.textAlign = "center";
+			ctx.textBaseline = "middle";
+			ctx.fillText(label + Std.string(i + 1), sx, sy);
+		}
+	}
+
+	function drawTileHighlight(ctx:CanvasRenderingContext2D, cx:Float, cy:Float, tx:Int, ty:Int, dir:ShipDirection, color:String) {
+		if (ship == null)
+			return;
+
+		var rot = getRotationForDirection(dir);
+		var half = ship.deckGrid.tile_size / 2;
+		var tileCX = tx + 0.5;
+		var tileCY = ty + 0.5;
+		var center = tileToScreen(tileCX, tileCY, dir);
+
+		var corners = [
+			{x: -half, y: -half},
+			{x: half, y: -half},
+			{x: half, y: half},
+			{x: -half, y: half}
+		];
+
+		ctx.beginPath();
+		for (i in 0...4) {
+			var vx = corners[i].x;
+			var vy = corners[i].y;
+			var rx = vx * rot.cos - vy * rot.sin;
+			var ry = (vx * rot.sin + vy * rot.cos) * ISO_Y_SCALE;
+			var sx = cx + center.x + rx;
+			var sy = cy + center.y + ry;
+			if (i == 0)
+				ctx.moveTo(sx, sy);
+			else
+				ctx.lineTo(sx, sy);
+		}
+		ctx.closePath();
+		ctx.fillStyle = color;
+		ctx.fill();
+		ctx.strokeStyle = "#ffffff";
+		ctx.lineWidth = 1.5;
+		ctx.stroke();
 	}
 
 	// =========================================================================

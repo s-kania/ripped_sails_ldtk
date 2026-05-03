@@ -13,6 +13,7 @@
 		<button class="tab" data-tab="grid"><span class="icon gridSnap"></span> Deck Grid</button>
 		<button class="tab" data-tab="offsets"><span class="icon move"></span> Visual Offsets</button>
 		<button class="tab" data-tab="cannons"><span class="icon pointRight"></span> Cannon Slots</button>
+		<button class="tab" data-tab="props"><span class="icon pointRight"></span> Props</button>
 	</div>
 
 	<div class="canvasControls"
@@ -164,6 +165,67 @@
 				</div>
 				<div class="cannonsCanvas">
 					<canvas class="cannonSlotsCanvas"></canvas>
+				</div>
+			</div>
+		</div>
+
+		<!-- Props screen -->
+		<div class="screen props">
+			<div class="propsLayout" style="display:grid; grid-template-columns:280px 1fr; gap:24px;">
+				<div class="propsControls" style="max-width:280px;">
+					<h3>Ship Props</h3>
+					<p>Select a prop type, then position markers on the sprite.</p>
+					<div class="propTypeList">
+						<button class="propTypeBtn active" data-prop="boarding_points">Boarding Points</button>
+						<button class="propTypeBtn" data-prop="steering_wheel">Steering Wheel</button>
+					</div>
+					<!-- Boarding Points config -->
+					<div class="propConfig propConfig-boarding_points">
+						<div class="directionSwitcher"></div>
+						<div class="propButtons"
+							style="display: flex !important; flex-direction: row !important; align-items: center !important; gap: 8px !important;">
+							<span class="propCountLabel" style="font-weight: bold; white-space: nowrap;">Count: </span>
+							<span class="propCount" style="min-width: 1.5ch; text-align: center;">0</span>
+							<button class="addPropPoint" style="margin-left: 4px;"><span class="icon add"></span> +</button>
+							<button class="removePropPoint"><span class="icon delete"></span> -</button>
+						</div>
+						<p style="opacity:0.7; font-size:0.85em">Add/remove boarding points. Drag to reposition.</p>
+						<div class="propInfo"></div>
+					</div>
+					<!-- Steering Wheel config -->
+					<div class="propConfig propConfig-steering_wheel" style="display:none">
+						<div style="margin-top:4px">
+							<label style="font-size:9pt; color:#aab; display:block; margin-bottom:6px;">Placement Mode</label>
+							<div class="wheelPlacementMode" style="display:flex; gap:4px;">
+								<button class="wheelModeBtn active" data-mode="wheel" style="padding:4px 10px; font-size:9pt;">⚙ Place Wheel</button>
+								<button class="wheelModeBtn" data-mode="helmsman" style="padding:4px 10px; font-size:9pt;">🧑 Place Helmsman</button>
+							</div>
+						</div>
+						<div style="margin-top:8px">
+							<label style="font-size:9pt; color:#aab; display:block; margin-bottom:4px;">Wheel Assets Folder</label>
+							<button class="selectWheelAssets" style="padding:4px 10px; font-size:9pt;"><span class="icon folderOpen"></span> Select Folder…</button>
+							<div class="wheelAssetPath" style="font-size:8pt; color:#778; margin-top:4px; word-break:break-all;"></div>
+						</div>
+						<div style="margin-top:8px">
+							<label style="font-size:9pt; color:#aab; display:block; margin-bottom:4px;">Wheel Scale</label>
+							<input type="number" class="wheelScaleInput" step="0.1" min="0.1" max="10" value="1.0" style="width:60px; font-size:9pt; padding:2px 4px;">
+						</div>
+						<p style="opacity:0.7; font-size:0.85em; margin-top:6px;">
+							Click a deck tile to place the wheel or helmsman.<br>
+							Position is shared across all directions.
+						</p>
+						<div class="propInfo"></div>
+					</div>
+					<!-- Shared toggles -->
+					<div style="margin-top:6px"><label><input type="checkbox" class="showPropsGrid" /> Show Visual Grid</label></div>
+					<div style="margin-top:4px"><label><input type="checkbox" class="showPropsHelperLines" /> Show Helper Lines</label></div>
+					<div class="undoControls propsUndo" style="display:none; margin-top:8px; gap:6px">
+						<button class="undoBtn" style="padding:2px 10px">↩ Undo</button>
+						<button class="resetDataBtn" style="padding:2px 10px">Reset to Saved</button>
+					</div>
+				</div>
+				<div class="propsCanvas">
+					<canvas class="propsCanvasEl"></canvas>
 				</div>
 			</div>
 		</div>

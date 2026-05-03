@@ -11542,4 +11542,93 @@ $patternSize : 32px;
 			}
 		}
 	}
+
+	// Props screen
+	.screen.props {
+		.propsLayout {
+			display: grid;
+			grid-template-columns: 280px 1fr;
+			gap: 24px;
+		}
+
+		.propsControls {
+			h3 {
+				font-size: 10pt;
+				color: $help;
+				margin: 0 0 8px;
+				padding-bottom: 4px;
+				border-bottom: 1px solid $bgLight;
+			}
+
+			p {
+				font-size: 8pt;
+				color: $bgLighter;
+				margin-bottom: 12px;
+			}
+
+			.propTypeList {
+				display: flex;
+				flex-direction: column;
+				gap: 4px;
+				margin-bottom: 12px;
+
+				.propTypeBtn {
+					padding: 6px 12px;
+					text-align: left;
+					font-size: 9pt;
+					background-color: $bgDark;
+					border: 1px solid $bgLight;
+					border-radius: 3px;
+					color: $bgLighter;
+					cursor: pointer;
+
+					&:hover {
+						background-color: lighten($bgDark, 5%);
+					}
+
+					&.active {
+						background-color: $helpDark;
+						border-color: $help;
+						color: $help;
+						font-weight: bold;
+					}
+				}
+			}
+
+			.propButtons {
+				display: flex;
+				flex-direction: row;
+				align-items: center;
+				gap: 8px;
+				margin-top: 12px;
+
+				button {
+					display: flex;
+					align-items: center;
+					gap: 4px;
+					padding: 4px 10px;
+					font-size: 9pt;
+				}
+			}
+
+			.propInfo {
+				margin-top: 12px;
+				font-size: 8pt;
+				color: $bgLighter;
+			}
+		}
+
+		.propsCanvas {
+			display: flex;
+			align-items: center;
+			justify-content: center;
+
+			canvas {
+				background-color: $bgMed;
+				border: 1px solid $bgLight;
+				border-radius: 4px;
+				cursor: crosshair;
+			}
+		}
+	}
 }
