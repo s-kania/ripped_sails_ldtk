@@ -21,14 +21,24 @@ type RouteCandidate = {
     cost: number;
 };
 
+type RouteSearchNode = {
+    x: number;
+    y: number;
+    g: number;
+    f: number;
+};
+
 // ============================================================================
 // MODULE: MAP GENERATOR (The Core Logic)
 // ============================================================================
 export class MapGenerator {
+    private static readonly MAX_ROUTED_RESOLUTION = 512;
+
     public params: MapParams;
     public prng: PRNG;
     public noise: Noise;
     public map: MapData;
+    private waterComponentIds: Int32Array | null;
 
     constructor(params: MapParams) {
         this.params = params;
@@ -37,6 +47,7 @@ export class MapGenerator {
         const w = params.resolution;
         const h = Math.round(w / 1.6180339887);
         this.map = new MapData(w, h, params);
+        this.waterComponentIds = null;
     }
 
     generate(onProgress?: (msg: string) => void): MapData {
@@ -121,9 +132,10 @@ export class MapGenerator {
 
         this._generateSettlementsAndPointsOfInterest();
 
-        if (this.params.enableRoutes) {
+        if (this.params.enableRoutes && this.map.width <= MapGenerator.MAX_ROUTED_RESOLUTION) {
             this._generateRoutes();
         } else {
+            if (this.params.enableRoutes && onProgress) onProgress(`Skipping sea routes above ${MapGenerator.MAX_ROUTED_RESOLUTION}px.`);
             this.map.routes = [];
         }
 
@@ -681,12 +693,14 @@ export class MapGenerator {
     }
 
     private _findWaterPath(start: TravelRoutePoint, goal: TravelRoutePoint, directDistanceTiles: number): TravelRoutePoint[] | null {
-        const startKey = `${start.x},${start.y}`;
-        const goalKey = `${goal.x},${goal.y}`;
-        const open: { x: number; y: number; g: number; f: number }[] = [{ x: start.x, y: start.y, g: 0, f: this._distance(start.x, start.y, goal.x, goal.y) }];
-        const cameFrom = new Map<string, string>();
-        const gScore = new Map<string, number>([[startKey, 0]]);
-        const closed = new Set<string>();
+        if (this._getWaterComponentId(start.x, start.y) !== this._getWaterComponentId(goal.x, goal.y)) return null;
+        const startIndex = start.y * this.map.width + start.x;
+        const goalIndex = goal.y * this.map.width + goal.x;
+        const open: RouteSearchNode[] = [];
+        this._pushOpenNode(open, { x: start.x, y: start.y, g: 0, f: this._distance(start.x, start.y, goal.x, goal.y) });
+        const cameFrom = new Map<number, number>();
+        const gScore = new Map<number, number>([[startIndex, 0]]);
+        const closed = new Set<number>();
         const margin = Math.max(12, Math.ceil(directDistanceTiles * 0.35));
         const minX = Math.max(0, Math.min(start.x, goal.x) - margin);
         const maxX = Math.min(this.map.width - 1, Math.max(start.x, goal.x) + margin);
@@ -696,14 +710,13 @@ export class MapGenerator {
         let visits = 0;
 
         while (open.length > 0 && visits < visitLimit) {
-            open.sort((a, b) => a.f - b.f);
-            const current = open.shift()!;
-            const currentKey = `${current.x},${current.y}`;
+            const current = this._popOpenNode(open)!;
+            const currentIndex = current.y * this.map.width + current.x;
 
-            if (closed.has(currentKey)) continue;
-            if (currentKey === goalKey) return this._reconstructWaterPath(cameFrom, currentKey);
+            if (closed.has(currentIndex)) continue;
+            if (currentIndex === goalIndex) return this._reconstructWaterPath(cameFrom, currentIndex);
 
-            closed.add(currentKey);
+            closed.add(currentIndex);
             visits++;
 
             for (let oy = -1; oy <= 1; oy++) {
@@ -717,19 +730,19 @@ export class MapGenerator {
                     const tile = this.map.getTile(nx, ny);
                     if (!tile || tile.walkable || !tile.isNavigable) continue;
 
-                    const neighborKey = `${nx},${ny}`;
-                    if (closed.has(neighborKey)) continue;
+                    const neighborIndex = ny * this.map.width + nx;
+                    if (closed.has(neighborIndex)) continue;
 
                     const stepCost = ox !== 0 && oy !== 0 ? 1.414 : 1;
                     const reefPenalty = tile.terrain === TERRAIN.REEF ? 0.35 : 0;
                     const shorePenalty = this._isNearLand(nx, ny) ? 0.08 : 0;
                     const tentativeG = current.g + stepCost + reefPenalty + shorePenalty;
 
-                    if (tentativeG >= (gScore.get(neighborKey) ?? Infinity)) continue;
+                    if (tentativeG >= (gScore.get(neighborIndex) ?? Infinity)) continue;
 
-                    cameFrom.set(neighborKey, currentKey);
-                    gScore.set(neighborKey, tentativeG);
-                    open.push({
+                    cameFrom.set(neighborIndex, currentIndex);
+                    gScore.set(neighborIndex, tentativeG);
+                    this._pushOpenNode(open, {
                         x: nx,
                         y: ny,
                         g: tentativeG,
@@ -742,13 +755,98 @@ export class MapGenerator {
         return null;
     }
 
-    private _reconstructWaterPath(cameFrom: Map<string, string>, currentKey: string): TravelRoutePoint[] {
-        const points: TravelRoutePoint[] = [];
-        let key: string | undefined = currentKey;
+    private _getWaterComponentId(x: number, y: number): number {
+        if (!this.waterComponentIds) this._buildWaterComponents();
+        return this.waterComponentIds![y * this.map.width + x];
+    }
 
-        while (key) {
-            const [x, y] = key.split(',').map(Number);
-            points.push({ x, y });
+    private _buildWaterComponents() {
+        const ids = new Int32Array(this.map.width * this.map.height);
+        ids.fill(-1);
+        let nextId = 0;
+
+        for (let y = 0; y < this.map.height; y++) {
+            for (let x = 0; x < this.map.width; x++) {
+                const idx = y * this.map.width + x;
+                if (ids[idx] >= 0) continue;
+                const start = this.map.getTile(x, y);
+                if (!start || start.walkable || !start.isNavigable) continue;
+
+                const queue: { x: number; y: number }[] = [{ x, y }];
+                let head = 0;
+                ids[idx] = nextId;
+
+                while (head < queue.length) {
+                    const current = queue[head++];
+                    for (let oy = -1; oy <= 1; oy++) {
+                        for (let ox = -1; ox <= 1; ox++) {
+                            if (ox === 0 && oy === 0) continue;
+                            const nx = current.x + ox;
+                            const ny = current.y + oy;
+                            if (nx < 0 || nx >= this.map.width || ny < 0 || ny >= this.map.height) continue;
+                            const ni = ny * this.map.width + nx;
+                            if (ids[ni] >= 0) continue;
+                            const tile = this.map.getTile(nx, ny);
+                            if (!tile || tile.walkable || !tile.isNavigable) continue;
+                            ids[ni] = nextId;
+                            queue.push({ x: nx, y: ny });
+                        }
+                    }
+                }
+
+                nextId++;
+            }
+        }
+
+        this.waterComponentIds = ids;
+    }
+
+    private _pushOpenNode(open: RouteSearchNode[], node: RouteSearchNode) {
+        open.push(node);
+        let i = open.length - 1;
+        while (i > 0) {
+            const parent = Math.floor((i - 1) / 2);
+            if (!this._routeNodeLess(open[i], open[parent])) break;
+            const tmp = open[i];
+            open[i] = open[parent];
+            open[parent] = tmp;
+            i = parent;
+        }
+    }
+
+    private _popOpenNode(open: RouteSearchNode[]): RouteSearchNode | null {
+        if (open.length === 0) return null;
+        const first = open[0];
+        const last = open.pop();
+        if (open.length > 0 && last) {
+            open[0] = last;
+            let i = 0;
+            while (true) {
+                const left = i * 2 + 1;
+                if (left >= open.length) break;
+                const right = left + 1;
+                let best = left;
+                if (right < open.length && this._routeNodeLess(open[right], open[left])) best = right;
+                if (!this._routeNodeLess(open[best], open[i])) break;
+                const tmp = open[i];
+                open[i] = open[best];
+                open[best] = tmp;
+                i = best;
+            }
+        }
+        return first;
+    }
+
+    private _routeNodeLess(a: RouteSearchNode, b: RouteSearchNode): boolean {
+        return a.f < b.f || (a.f === b.f && a.g > b.g);
+    }
+
+    private _reconstructWaterPath(cameFrom: Map<number, number>, currentIndex: number): TravelRoutePoint[] {
+        const points: TravelRoutePoint[] = [];
+        let key: number | undefined = currentIndex;
+
+        while (key !== undefined) {
+            points.push({ x: key % this.map.width, y: Math.floor(key / this.map.width) });
             key = cameFrom.get(key);
         }
 

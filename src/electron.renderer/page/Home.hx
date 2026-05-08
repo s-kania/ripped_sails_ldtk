@@ -52,6 +52,9 @@ class Home extends Page {
 		jPage.find(".shipEditor").click( (_)->{
 			App.ME.loadPage( ()->new page.ShipEditor() );
 		});
+		jPage.find(".worldMapEditor").click( (_)->{
+			App.ME.loadPage( ()->new page.WorldMapEditor() );
+		});
 		jPage.find(".allSamples .hide").click( (_)->hideSamples() );
 		jPage.find(".import").click( (ev)->onImport(ev) );
 		jPage.find(".new").click( (_)->if( !cd.hasSetS("newLock",0.2) ) onNew() );
