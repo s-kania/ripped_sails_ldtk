@@ -29,6 +29,7 @@ class WorldMapEditor extends Page {
 	var generateTimeout:Null<Int> = null;
 	var selectedIslandId:Null<Int> = null;
 	var showLegend = false;
+	var worldLoaded = false;
 
 	public function new() {
 		super();
@@ -42,7 +43,7 @@ class WorldMapEditor extends Page {
 		initControls();
 		initButtons();
 		initCanvas();
-		generateMap();
+		initOpeningScreen();
 	}
 
 	function initControls() {
@@ -161,6 +162,78 @@ class WorldMapEditor extends Page {
 		jPage.find(".fullMap").click(_->toggleFullscreen());
 	}
 
+	function initOpeningScreen() {
+		jPage.find(".newWorld").click(_->startNewWorld());
+		jPage.find(".openWorld").click(_->openWorldFile());
+
+		var recentFile = App.ME.settings.getUiDir("WorldMapEditorFile", null);
+		if( recentFile!=null && NT.fileExists(recentFile) ) {
+			var fp = dn.FilePath.fromFile(recentFile);
+			jPage.find(".openRecentWorld").show().click(_->loadWorldFromFile(recentFile));
+			jPage.find(".recentWorldInfo").show().html('<em>Recent: ${StringTools.htmlEscape(fp.fileWithExt)}</em>');
+		}
+		else {
+			jPage.find(".openRecentWorld").hide();
+			jPage.find(".recentWorldInfo").hide().empty();
+		}
+	}
+
+	function startNewWorld() {
+		params = WorldMapParams.loadSaved();
+		updateAllControlValues();
+		revealEditor();
+		generateMap();
+	}
+
+	function openWorldFile() {
+		var dir = App.ME.settings.getUiDir("WorldMapEditor", App.ME.getDefaultDialogDir());
+		dn.js.ElectronDialogs.openFile([".json"], dir, (filePath)->{
+			if( filePath==null )
+				return;
+			loadWorldFromFile(filePath);
+		});
+	}
+
+	function loadWorldFromFile(path:String) {
+		try {
+			var raw = NT.readFileString(path);
+			var json:Dynamic = haxe.Json.parse(raw);
+			if( json==null || !Reflect.hasField(json, "params") || Reflect.field(json, "params")==null )
+				throw "Missing top-level params object";
+
+			var loadedParams = WorldMapParams.defaultParams();
+			loadedParams.applyDynamic(Reflect.field(json, "params"));
+			params = loadedParams;
+			updateAllControlValues();
+			rememberWorldFile(path);
+			revealEditor();
+			generateMap();
+		}
+		catch( err:Dynamic ) {
+			logError("load failed", err);
+			setStatus("World map load failed");
+			N.error("World map JSON load failed: " + Std.string(err));
+		}
+	}
+
+	function rememberWorldFile(path:String) {
+		var fp = dn.FilePath.fromFile(path);
+		App.ME.settings.storeUiDir("WorldMapEditor", fp.directory);
+		App.ME.settings.storeUiDir("WorldMapEditorFile", fp.full);
+	}
+
+	function revealEditor() {
+		worldLoaded = true;
+		jPage.find(".worldMapOpening").hide();
+		jPage.find(".worldMapEditorBody").addClass("active");
+		jPage.find(".worldMapActions").addClass("active");
+	}
+
+	function updateAllControlValues() {
+		for( c in getControls() )
+			updateControlValue(c.key);
+	}
+
 	function initCanvas() {
 		var canvas:CanvasElement = cast jPage.find("#worldMapCanvas").get(0);
 		log("init canvas", { found:canvas!=null });
@@ -194,6 +267,8 @@ class WorldMapEditor extends Page {
 	}
 
 	function debounceGenerate() {
+		if( !worldLoaded )
+			return;
 		if( generateTimeout!=null )
 			Browser.window.clearTimeout(generateTimeout);
 		setStatus("Generating...");
@@ -366,7 +441,7 @@ class WorldMapEditor extends Page {
 	function exportJson() {
 		if( mapData==null )
 			return;
-		saveJson("map_" + sanitizeFileName(params.seed) + ".json", haxe.Json.stringify(makeFullExport(), null, "  "), "World map JSON exported");
+		saveJson("map_" + sanitizeFileName(params.seed) + ".json", haxe.Json.stringify(makeFullExport(), null, "  "), "World map JSON exported", true);
 	}
 
 	function exportLocationsJson() {
@@ -375,7 +450,7 @@ class WorldMapEditor extends Page {
 		saveJson("locations_" + sanitizeFileName(params.seed) + ".json", haxe.Json.stringify(makeLocationsExport(), null, "  "), "World locations JSON exported");
 	}
 
-	function saveJson(fileName:String, raw:String, success:String) {
+	function saveJson(fileName:String, raw:String, success:String, rememberAsWorldFile=false) {
 		var dir = App.ME.settings.getUiDir("WorldMapEditor", App.ME.getDefaultDialogDir());
 		dn.js.ElectronDialogs.saveFileAs([".json"], dir + "/" + fileName, (filePath)->{
 			if( filePath==null )
@@ -384,6 +459,8 @@ class WorldMapEditor extends Page {
 			fp.extension = "json";
 			App.ME.settings.storeUiDir("WorldMapEditor", fp.directory);
 			NT.writeFileString(fp.full, raw);
+			if( rememberAsWorldFile )
+				rememberWorldFile(fp.full);
 			N.success(success, fp.fileWithExt);
 		});
 	}
