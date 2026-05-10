@@ -26,6 +26,28 @@ typedef BackupInfos = {
 	var crash: Bool;
 }
 
+private typedef RuntimeChunkInfo = {
+	var level: data.Level;
+	var id: String;
+	var path: String;
+	var gridX: Int;
+	var gridY: Int;
+	var x: Int;
+	var y: Int;
+}
+
+private typedef RuntimeRegionExportData = {
+	var id: String;
+	var chunkPrefix: String;
+	var width: Int;
+	var height: Int;
+	var tileSize: Int;
+	var chunkTileDimension: Int;
+	var chunkPixelSize: Int;
+	var chunks: Array<RuntimeChunkInfo>;
+	var playerStart: Dynamic;
+}
+
 class ProjectSaver extends dn.Process {
 	static var QUEUE : Array<ProjectSaver> = [];
 	var project : data.Project;
@@ -58,7 +80,7 @@ class ProjectSaver extends dn.Process {
 		return [ adjustedStart, adjustedEnd ];
 	}
 
-	inline function buildPathfindingDataForSimplified():Null<Dynamic> {
+	inline function buildPathfindingDataForRuntime(regionData:RuntimeRegionExportData):Null<Dynamic> {
 		data.PathfindingPaths.ensure(project);
 		if( project.pathfindingPaths == null || project.pathfindingPaths.nodes == null )
 			return null;
@@ -68,7 +90,7 @@ class ProjectSaver extends dn.Process {
 			var transformedConnections = [];
 			if( originalNode.connections != null ) {
 				for( originalConnection in (cast originalNode.connections : Array<Dynamic>) ) {
-					var connectionInfo = transformNodeIdForSimplified(originalConnection.nodeId);
+					var connectionInfo = transformNodeIdForRuntime(originalConnection.nodeId, regionData);
 					transformedConnections.push({
 						id: connectionInfo.id,
 						chunk: originalConnection.chunk,
@@ -76,7 +98,7 @@ class ProjectSaver extends dn.Process {
 					});
 				}
 			}
-			var nodeInfo = transformNodeIdForSimplified(originalNode.id);
+			var nodeInfo = transformNodeIdForRuntime(originalNode.id, regionData);
 			var nodeEntry:Dynamic = {
 				id: nodeInfo.id,
 				chunks: nodeInfo.chunks,
@@ -99,11 +121,10 @@ class ProjectSaver extends dn.Process {
 	}
 
 	/**
-	 * Transforms a pathfinding node ID from the internal format to the simplified format.
-	 * Extracts chunks and position information.
-	 * Example: "7_2⎯7_3⎯bottom⎯15" becomes {id: "7_2-7_3-15", chunks: ["7_2", "7_3"], position: 15}
+	 * Transforms a pathfinding node ID from the internal format to the graph format.
+	 * Example: "7_2⎯7_3⎯bottom⎯15" becomes "7_2-7_3-15".
 	 */
-	function transformNodeIdForSimplified(nodeId:String):{id:String, chunks:Array<String>, position:Int} {
+	function transformNodeIdForRuntime(nodeId:String, regionData:RuntimeRegionExportData):{id:String, chunks:Array<String>, position:Int} {
 		var parts = nodeId.split("⎯");
 		if (parts.length != 4) {
 			// If format is unexpected, return as-is
@@ -115,12 +136,189 @@ class ProjectSaver extends dn.Process {
 		// Skip direction (parts[2])
 		var position = Std.parseInt(parts[3]);
 		
-		// Return new format with chunks and position
 		return {
 			id: levelA + "-" + levelB + "-" + position,
 			chunks: [levelA, levelB],
 			position: position
 		};
+	}
+
+	function parseRuntimeChunkId(levelId:String) : Null<{ prefix:String, x:Int, y:Int }> {
+		var parts = levelId.split("_");
+		if( parts.length<3 )
+			return null;
+
+		var x = Std.parseInt(parts[parts.length-2]);
+		var y = Std.parseInt(parts[parts.length-1]);
+		if( x==null || y==null )
+			return null;
+
+		return {
+			prefix: parts.slice(0, parts.length-2).join("_"),
+			x: x,
+			y: y,
+		};
+	}
+
+	function getEntityCustomFields(ei:data.inst.EntityInstance) : Dynamic {
+		var customFields = {};
+		for( fi in ei.fieldInstances )
+			Reflect.setField(customFields, fi.def.identifier, fi.toJson().__value);
+		return customFields;
+	}
+
+	function buildRuntimeRegionExportData() : { error:Null<String>, data:Null<RuntimeRegionExportData> } {
+		var regionId = project.filePath.fileName;
+		var tileSize = project.defaultGridSize;
+		if( tileSize<=0 )
+			return { error:"Runtime region export failed: project default grid size must be greater than zero.", data:null };
+
+		var chunks : Array<RuntimeChunkInfo> = [];
+		var chunkNamesByGridKey = new Map<String,String>();
+		var chunkPrefix : Null<String> = null;
+		var chunkTileDimension : Null<Int> = null;
+		var chunkPixelSize : Null<Int> = null;
+		var maxGridX = -1;
+		var maxGridY = -1;
+		var playerInstances : Array<{ level:data.Level, entity:data.inst.EntityInstance }> = [];
+
+		for(w in project.worlds)
+		for(l in w.levels) {
+			var parsed = parseRuntimeChunkId(l.identifier);
+			if( parsed==null )
+				return { error:'Runtime region export failed: chunk "${l.identifier}" must use "<prefix>_<x>_<y>" naming.', data:null };
+
+			if( chunkPrefix==null )
+				chunkPrefix = parsed.prefix;
+			else if( chunkPrefix!=parsed.prefix )
+				return { error:'Runtime region export failed: chunk "${l.identifier}" uses prefix "${parsed.prefix}", expected "${chunkPrefix}".', data:null };
+
+			if( l.pxWid!=l.pxHei )
+				return { error:'Runtime region export failed: chunk "${l.identifier}" must be square, got ${l.pxWid}x${l.pxHei}.', data:null };
+
+			if( l.pxWid%tileSize!=0 )
+				return { error:'Runtime region export failed: chunk "${l.identifier}" size ${l.pxWid}px is not divisible by tile size ${tileSize}.', data:null };
+
+			var levelChunkTileDimension = Std.int(l.pxWid / tileSize);
+			if( chunkTileDimension==null )
+				chunkTileDimension = levelChunkTileDimension;
+			else if( chunkTileDimension!=levelChunkTileDimension )
+				return { error:'Runtime region export failed: chunk "${l.identifier}" tile dimension ${levelChunkTileDimension} differs from expected ${chunkTileDimension}.', data:null };
+
+			if( chunkPixelSize==null )
+				chunkPixelSize = l.pxWid;
+			else if( chunkPixelSize!=l.pxWid )
+				return { error:'Runtime region export failed: chunk "${l.identifier}" pixel size ${l.pxWid} differs from expected ${chunkPixelSize}.', data:null };
+
+			var gridKey = parsed.x + "_" + parsed.y;
+			if( chunkNamesByGridKey.exists(gridKey) )
+				return { error:'Runtime region export failed: duplicate chunk grid coordinate ${gridKey}.', data:null };
+
+			chunkNamesByGridKey.set(gridKey, l.identifier);
+			maxGridX = Std.int(Math.max(maxGridX, parsed.x));
+			maxGridY = Std.int(Math.max(maxGridY, parsed.y));
+			chunks.push({
+				level: l,
+				id: l.identifier,
+				path: "chunks/" + l.identifier + ".json",
+				gridX: parsed.x,
+				gridY: parsed.y,
+				x: l.worldX,
+				y: -l.worldY,
+			});
+
+			for(li in l.layerInstances) {
+				if( li.def.type!=Entities )
+					continue;
+
+				for(ei in li.entityInstances)
+					if( ei.def.identifier=="player" )
+						playerInstances.push({ level:l, entity:ei });
+			}
+		}
+
+		if( chunks.length==0 )
+			return { error:"Runtime region export failed: region contains no chunks.", data:null };
+
+		if( playerInstances.length==0 )
+			return { error:'Runtime region export failed: missing required "player" entity.', data:null };
+
+		if( playerInstances.length>1 )
+			return { error:'Runtime region export failed: expected exactly one "player" entity, found ${playerInstances.length}.', data:null };
+
+		var player = playerInstances[0];
+		var playerStart = {
+			x: player.entity.worldX,
+			y: -player.entity.worldY,
+			chunk_id: player.level.identifier,
+			customFields: getEntityCustomFields(player.entity),
+		};
+		var finalChunkPrefix:String = cast chunkPrefix;
+		var finalChunkTileDimension:Int = cast chunkTileDimension;
+		var finalChunkPixelSize:Int = cast chunkPixelSize;
+
+		return {
+			error: null,
+			data: {
+				id: regionId,
+				chunkPrefix: finalChunkPrefix,
+				width: maxGridX + 1,
+				height: maxGridY + 1,
+				tileSize: tileSize,
+				chunkTileDimension: finalChunkTileDimension,
+				chunkPixelSize: finalChunkPixelSize,
+				chunks: chunks,
+				playerStart: playerStart,
+			}
+		};
+	}
+
+	function buildRuntimeRegionManifest(regionData:RuntimeRegionExportData) : Dynamic {
+		var regionAssetRoot = "/assets/world/regions/" + regionData.id + "/";
+		return {
+			schema_version: 2,
+			id: regionData.id,
+			grid: {
+				chunk_prefix: regionData.chunkPrefix,
+				width: regionData.width,
+				height: regionData.height,
+				tile_size: regionData.tileSize,
+				chunk_tile_dimension: regionData.chunkTileDimension,
+				chunk_pixel_size: regionData.chunkPixelSize,
+			},
+			content: {
+				chunks: regionAssetRoot + "chunks/",
+				navigation_walls: regionAssetRoot + "navigation/walls/",
+				navigation_graph: regionAssetRoot + "navigation/graph.json",
+			},
+			player_start: regionData.playerStart,
+			chunks: regionData.chunks.map( c -> {
+				id: c.id,
+				path: c.path,
+				x: c.x,
+				y: c.y,
+			}),
+		};
+	}
+
+	function removeRuntimeRegionExportFiles(regionDir:String) {
+		var oldSimplifiedDir = regionDir + "/simplified";
+		var oldWallsDir = regionDir + "/walls";
+		var chunksDir = regionDir + "/chunks";
+		var navigationDir = regionDir + "/navigation";
+		var mainFp = dn.FilePath.fromDir(regionDir);
+		mainFp.fileWithExt = "main.json";
+
+		if( NT.fileExists(oldSimplifiedDir) )
+			NT.removeDir(oldSimplifiedDir);
+		if( NT.fileExists(oldWallsDir) )
+			NT.removeDir(oldWallsDir);
+		if( NT.fileExists(chunksDir) )
+			NT.removeDir(chunksDir);
+		if( NT.fileExists(navigationDir) )
+			NT.removeDir(navigationDir);
+		if( NT.fileExists(mainFp.full) )
+			NT.removeFile(mainFp.full);
 	}
 
 
@@ -495,14 +693,25 @@ class ProjectSaver extends dn.Process {
 
 
 			case WritingSimplifiedFormat:
-				var dirFp = dn.FilePath.fromDir( project.getAbsExternalFilesDir()+"/simplified" );
+				var regionDir = project.getAbsExternalFilesDir();
+				var chunksDir = regionDir + "/chunks";
+				var navigationDir = regionDir + "/navigation";
+				var navigationWallsDir = navigationDir + "/walls";
 
 				if( project.simplifiedExport ) {
-					logState();
-					initDir(dirFp.full, "json");
+					var preflight = buildRuntimeRegionExportData();
+					if( preflight.error!=null ) {
+						error(Lang.untranslated(preflight.error));
+						return;
+					}
+					var regionData:RuntimeRegionExportData = cast preflight.data;
 
-					var wallsDirFp = dn.FilePath.fromDir( project.getAbsExternalFilesDir()+"/walls" );
-					initDir(wallsDirFp.full, "json");
+					logState();
+					removeRuntimeRegionExportFiles(regionDir);
+					initDir(regionDir);
+					initDir(chunksDir, "json");
+					initDir(navigationDir);
+					initDir(navigationWallsDir, "json");
 
 					var ops : Array<ui.modal.Progress.ProgressOp> = [];
 					ops.push({
@@ -513,28 +722,23 @@ class ProjectSaver extends dn.Process {
 						isExpensive: true,
 					});
 
-					// Write simplified/main.json
+					// Write runtime main.json
 					ops.push({
-						label: "Writing simplified main.json...",
+						label: "Writing runtime main.json...",
 						cb: ()->{
-							var mainLevels = [];
-							for(w in project.worlds)
-							for(l in w.levels)
-								mainLevels.push({ identifier:l.identifier, path:'simplified/' + l.identifier });
-
-							var mainFp = dirFp.clone();
+							var mainFp = dn.FilePath.fromDir(regionDir);
 							mainFp.fileWithExt = "main.json";
-							NT.writeFileString(mainFp.full, dn.data.JsonPretty.stringify({ levels: mainLevels }, Full));
+							NT.writeFileString(mainFp.full, dn.data.JsonPretty.stringify(buildRuntimeRegionManifest(regionData), Full));
 						},
 					});
 
-					// Write simplified/pathfindingPoints.json
+					// Write navigation/graph.json
 					ops.push({
-						label: "Writing pathfindingPoints.json...",
+						label: "Writing navigation graph.json...",
 						cb: ()->{
-							var pathfindingFp = dirFp.clone();
-							pathfindingFp.fileWithExt = "pathfindingPoints.json";
-							var pathfindingData = buildPathfindingDataForSimplified();
+							var pathfindingFp = dn.FilePath.fromDir(navigationDir);
+							pathfindingFp.fileWithExt = "graph.json";
+							var pathfindingData = buildPathfindingDataForRuntime(regionData);
 							if( pathfindingData==null )
 								pathfindingData = { nodes: [] };
 							NT.writeFileString(pathfindingFp.full, dn.data.JsonPretty.stringify(pathfindingData, Full));
@@ -550,26 +754,24 @@ class ProjectSaver extends dn.Process {
 						}
 					});
 
-					// Write simplified level files
-					for(w in project.worlds)
-					for(l in w.levels) {
-						var l = l;
+					// Write runtime chunk files
+					for(chunk in regionData.chunks) {
+						var chunk = chunk;
 						ops.push({
-							label: l.identifier,
+							label: chunk.id,
 							cb: ()->{
-								var simpleJson = l.toSimplifiedJson();
-								var fp = dirFp.clone();
-								fp.fileWithExt = l.identifier + ".json";
+								var simpleJson = chunk.level.toSimplifiedJson();
+								var fp = dn.FilePath.fromDir(chunksDir);
+								fp.fileWithExt = chunk.id + ".json";
 								NT.writeFileString(fp.full, dn.data.JsonPretty.stringify(simpleJson, Full));
 							},
 						});
 					}
 
-					new ui.modal.Progress("Simplified export", ops, ()->beginNextState());
+					new ui.modal.Progress("Runtime region export", ops, ()->beginNextState());
 				}
 				else {
-					if( NT.fileExists(dirFp.full) )
-						NT.removeDir(dirFp.full);
+					removeRuntimeRegionExportFiles(regionDir);
 					beginNextState();
 				}
 

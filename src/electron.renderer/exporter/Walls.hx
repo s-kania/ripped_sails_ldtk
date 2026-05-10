@@ -8,7 +8,7 @@ class Walls extends Exporter {
 	override function convert() {
 		super.convert();
 
-		setOutputPath( p.getAbsExternalFilesDir() + "/walls", true );
+		setOutputPath( p.getAbsExternalFilesDir() + "/navigation/walls", true );
 
 		for(w in p.worlds)
 			for(l in w.levels) {

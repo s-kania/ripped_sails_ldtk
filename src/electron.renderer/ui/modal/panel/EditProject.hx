@@ -741,7 +741,7 @@ class EditProject extends ui.modal.Panel {
 		if( project.simplifiedExport )
 			jLocate.append(
 				NT.fileExists( project.getAbsExternalFilesDir() )
-					? JsTools.makeLocateLink(project.getAbsExternalFilesDir()+"/simplified", false)
+					? JsTools.makeLocateLink(project.getAbsExternalFilesDir(), false)
 					: JsTools.makeLocateLink(project.filePath.full, true)
 			);
 

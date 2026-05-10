@@ -1,0 +1,232 @@
+<div class="worldMapEditorWrapper">
+	<style>
+		#page.worldMapEditor {
+			display:flex; flex-direction:column; width:100vw; height:100vh; overflow:hidden;
+			background:#101820; color:#f4ecd8;
+		}
+		#page.worldMapEditor .worldMapEditorWrapper {
+			display:flex; flex-direction:column; width:100%; height:100%; min-height:0; overflow:hidden;
+		}
+		#page.worldMapEditor .topBar {
+			display:flex; align-items:center; gap:12px; padding:8px 16px; flex-shrink:0;
+			background:#2e333f; border-bottom:1px solid #545d73;
+		}
+		#page.worldMapEditor .topBar h1 {
+			margin:0; padding:0; border:0; color:#f4ecd8; font-size:14pt;
+		}
+		#page.worldMapEditor .topBar .status {
+			color:#e0c580; font-size:9pt; font-family:monospace;
+		}
+		#page.worldMapEditor .topBar .filler { flex:1; }
+		#page.worldMapEditor .topBar button {
+			display:flex; align-items:center; gap:4px; width:auto; padding:4px 12px; font-size:9pt;
+		}
+		#page.worldMapEditor .worldMapActions {
+			display:none; align-items:center; gap:8px;
+		}
+		#page.worldMapEditor .worldMapActions.active { display:flex; }
+		#page.worldMapEditor .worldMapOpening {
+			flex:1; min-height:0; display:flex; align-items:center; justify-content:center; padding:24px;
+			background:#101820;
+		}
+		#page.worldMapEditor .worldMapOpeningContent {
+			width:min(560px, 100%); text-align:center;
+		}
+		#page.worldMapEditor .worldMapOpeningContent h2 {
+			margin:0 0 8px 0; padding:0; border:0; color:#f4ecd8; font-size:18pt;
+		}
+		#page.worldMapEditor .worldMapOpeningContent p {
+			margin:0 0 18px 0; color:#aebbd0; font-size:10pt; line-height:1.45;
+		}
+		#page.worldMapEditor .worldMapOpeningButtons {
+			display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px;
+		}
+		#page.worldMapEditor .worldMapOpeningButtons button {
+			display:flex; align-items:center; justify-content:center; gap:6px; min-height:36px; padding:8px 10px;
+			font-size:9pt;
+		}
+		#page.worldMapEditor .recentWorldInfo {
+			display:none; margin-top:12px; color:#778aa2; font-size:9pt;
+		}
+		#page.worldMapEditor .layout {
+			flex:1; min-height:0; display:grid; grid-template-columns:340px minmax(0,1fr); overflow:hidden;
+		}
+		#page.worldMapEditor .worldMapEditorBody { display:none; }
+		#page.worldMapEditor .worldMapEditorBody.active { display:grid; }
+		#page.worldMapEditor .sidebar {
+			min-height:0; overflow-y:auto; padding:12px; background:#152234; border-right:1px solid #38516a;
+		}
+		#page.worldMapEditor .controlsForm { display:grid; gap:10px; }
+		#page.worldMapEditor .controlSection {
+			border-top:1px solid rgba(224,197,128,0.35); padding-top:8px;
+		}
+		#page.worldMapEditor .controlSection:first-child { border-top:0; padding-top:0; }
+		#page.worldMapEditor .controlSection h2 {
+			margin:0 0 8px 0; padding:0; border:0; color:#e0c580; font-size:10pt;
+		}
+		#page.worldMapEditor .control {
+			display:grid; gap:3px; margin-bottom:7px;
+		}
+		#page.worldMapEditor .control label {
+			display:flex; justify-content:space-between; align-items:center; gap:8px; color:#aebbd0; font-size:8.5pt;
+		}
+		#page.worldMapEditor .control .value {
+			color:#e0c580; font-family:monospace; font-size:8pt;
+		}
+		#page.worldMapEditor .control input[type=text],
+		#page.worldMapEditor .control input[type=number] {
+			width:100%; box-sizing:border-box; padding:4px 6px;
+			background:#0d1724; color:#f4ecd8; border:1px solid #38516a; border-radius:3px;
+		}
+		#page.worldMapEditor .control input[type=range] { width:100%; accent-color:#37a8c9; }
+		#page.worldMapEditor .control .tip { color:#778aa2; font-size:7.5pt; line-height:1.2; }
+		#page.worldMapEditor .control .borderPreview {
+			width:auto; margin:0 0 0 4px; padding:1px 5px; font-size:7pt; background:#203247; color:#37a8c9;
+			border:1px solid #38516a; box-shadow:none;
+		}
+		#page.worldMapEditor .actions {
+			position:sticky; bottom:0; display:grid; gap:6px; padding-top:10px; margin-top:10px;
+			background:linear-gradient(transparent, #152234 20%);
+		}
+		#page.worldMapEditor .actions .twoCols { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+		#page.worldMapEditor .actions button { padding:6px 8px; font-size:8.5pt; }
+		#page.worldMapEditor .mapArea {
+			position:relative; min-width:0; min-height:0; display:flex; align-items:center; justify-content:center;
+			background:#082654; overflow:hidden; padding:24px;
+		}
+		#page.worldMapEditor .mapFrame {
+			position:relative; background:#082654; border:4px double rgba(99,196,210,0.45);
+			box-shadow:0 0 28px rgba(5,49,95,0.8), inset 0 0 40px rgba(5,49,95,0.8);
+			overflow:hidden;
+		}
+		#page.worldMapEditor canvas {
+			width:100%; height:100%; display:block; image-rendering:pixelated;
+		}
+		#page.worldMapEditor .floatingButton {
+			position:absolute; z-index:3; width:auto; padding:5px 10px; font-size:8pt;
+			background:rgba(0,0,0,0.62); border:1px solid rgba(255,255,255,0.12); box-shadow:none;
+		}
+		#page.worldMapEditor .fullMap { top:12px; right:12px; }
+		#page.worldMapEditor .legendToggle { top:12px; left:12px; }
+		#page.worldMapEditor .legend {
+			display:none; position:absolute; z-index:3; top:48px; left:12px; padding:10px;
+			background:rgba(0,0,0,0.72); border:1px solid rgba(255,255,255,0.16); font-size:8pt; color:#d8e4ef;
+		}
+		#page.worldMapEditor .legend.visible { display:grid; gap:6px; }
+		#page.worldMapEditor .legend span { display:flex; align-items:center; gap:7px; white-space:nowrap; }
+		#page.worldMapEditor .swatch { width:14px; height:14px; border:1px solid rgba(255,255,255,0.25); display:inline-block; }
+		#page.worldMapEditor .islandInfo {
+			display:none; position:absolute; z-index:3; top:12px; left:50%; transform:translateX(-50%);
+			min-width:260px; padding:8px 12px; background:rgba(0,0,0,0.72);
+			border:1px solid rgba(224,197,128,0.45); color:#f4ecd8; font-size:8.5pt; font-family:monospace;
+		}
+		#page.worldMapEditor .islandInfo strong { color:#e0c580; }
+		#page.worldMapEditor .locationPopup {
+			display:none; position:absolute; z-index:4; right:16px; bottom:48px; width:300px; box-sizing:border-box;
+			padding:12px; background:rgba(13,23,36,0.94); border:1px solid rgba(224,197,128,0.55);
+			box-shadow:0 8px 24px rgba(0,0,0,0.45); color:#f4ecd8; font-size:8.5pt;
+		}
+		#page.worldMapEditor .locationPopup.visible { display:grid; gap:8px; }
+		#page.worldMapEditor .locationPopup .popupClose {
+			position:absolute; top:6px; right:6px; width:24px; height:24px; padding:0;
+			background:#2e333f; border:1px solid rgba(255,255,255,0.16); box-shadow:none;
+		}
+		#page.worldMapEditor .locationPopup h3 {
+			margin:0; padding:0 28px 4px 0; border:0; color:#e0c580; font-size:12pt; text-transform:none;
+		}
+		#page.worldMapEditor .locationPopup .locationMeta,
+		#page.worldMapEditor .locationPopup .locationNodeId,
+		#page.worldMapEditor .locationPopup .locationMapStatus {
+			color:#aebbd0; font-family:monospace; overflow-wrap:anywhere;
+		}
+		#page.worldMapEditor .locationPopup .locationMapStatus { color:#f4ecd8; }
+		#page.worldMapEditor .locationPopup .locationActions {
+			display:grid; grid-template-columns:1fr 1fr; gap:6px;
+		}
+		#page.worldMapEditor .locationPopup .locationActions button {
+			padding:6px 8px; font-size:8pt;
+		}
+		#page.worldMapEditor .locationPopup .locationActions .wide { grid-column:1 / -1; }
+		#page.worldMapEditor .bottomStatus {
+			position:absolute; z-index:3; bottom:12px; left:12px; padding:5px 10px;
+			background:rgba(0,0,0,0.62); border:1px solid rgba(255,255,255,0.12);
+			color:#e0c580; font-family:monospace; font-size:8pt; text-transform:uppercase;
+		}
+		@media (max-width:900px) {
+			#page.worldMapEditor .worldMapOpeningButtons { grid-template-columns:1fr; }
+		}
+	</style>
+
+	<div class="topBar">
+		<button class="backHome"><span class="icon left"></span> Back</button>
+		<h1>World Map Editor</h1>
+		<div class="status">Ready</div>
+		<div class="filler"></div>
+		<div class="worldMapActions">
+			<button class="exportWorld blue"><span class="icon download"></span> Export World</button>
+		</div>
+	</div>
+
+	<div class="worldMapOpening">
+		<div class="worldMapOpeningContent">
+			<h2>World Map Editor</h2>
+			<p>Create a new procedural world or load settings from a saved map JSON.</p>
+			<div class="worldMapOpeningButtons">
+				<button class="newWorld"><span class="icon new"></span> New World</button>
+				<button class="openWorld"><span class="icon open"></span> Open World JSON</button>
+				<button class="resumeDraftWorld" style="display:none"><span class="icon recent"></span> Resume Draft</button>
+				<button class="openRecentWorld" style="display:none"><span class="icon recent"></span> Open Recent</button>
+			</div>
+			<div class="recentWorldInfo"></div>
+		</div>
+	</div>
+
+	<div class="layout worldMapEditorBody">
+		<div class="sidebar">
+			<div class="controlsForm"></div>
+			<div class="actions">
+				<button class="generateMap blue"><span class="icon refresh"></span> Generate Map</button>
+				<button class="randomSeed"><span class="icon random"></span> Randomize Seed</button>
+				<div class="twoCols">
+					<button class="saveSettings gray"><span class="icon save"></span> Save Settings</button>
+					<button class="resetDefaults gray"><span class="icon reset"></span> Reset Defaults</button>
+				</div>
+			</div>
+		</div>
+
+		<div class="mapArea">
+			<button class="floatingButton legendToggle">Legend</button>
+			<button class="floatingButton fullMap">Full Map</button>
+			<div class="islandInfo"></div>
+			<div class="legend">
+				<span><i class="swatch" style="background:#082654"></i> Deep Sea</span>
+				<span><i class="swatch" style="background:#2378ad"></i> Shallows</span>
+				<span><i class="swatch" style="background:#165391"></i> Reefs</span>
+				<span><i class="swatch" style="background:#d7b56d"></i> Beach</span>
+				<span><i class="swatch" style="background:#708a34"></i> Plains</span>
+				<span><i class="swatch" style="background:#203b16"></i> Forest</span>
+				<span><i class="swatch" style="background:#827038"></i> Hills</span>
+				<span><i class="swatch" style="background:#b99768"></i> Mountains</span>
+				<span><i class="swatch" style="height:2px;background:white"></i> Sea Route</span>
+			</div>
+			<div class="mapFrame" id="worldMapFrame">
+				<canvas id="worldMapCanvas"></canvas>
+			</div>
+			<div class="locationPopup">
+				<button class="popupClose">x</button>
+				<h3 class="locationName"></h3>
+				<div class="locationMeta"></div>
+				<div class="locationNodeId"></div>
+				<div class="locationMapStatus"></div>
+				<div class="locationActions">
+					<button class="createLocationMap blue wide">Create map</button>
+					<button class="assignLocationMap">Assign map</button>
+					<button class="relinkLocationMap">Relink map</button>
+					<button class="openLocationMap blue">Open map</button>
+					<button class="setStartLocation gray wide">Set as start</button>
+				</div>
+			</div>
+			<div class="bottomStatus">Ready</div>
+		</div>
+	</div>
+</div>

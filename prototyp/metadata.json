@@ -1,0 +1,6 @@
+{
+  "name": "v2 Pirate Archipelago Generator",
+  "description": "A 2D procedural map generator creating Caribbean-styled archipelagos for pirate strategy games.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
