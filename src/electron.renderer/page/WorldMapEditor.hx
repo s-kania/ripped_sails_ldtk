@@ -75,32 +75,31 @@ class WorldMapEditor extends Page {
 		jForm.empty();
 		log("init controls");
 		var currentSection = "";
-		for( c in getControls() ) {
-			if( c.section!=currentSection ) {
+		for (c in getControls()) {
+			if (c.section != currentSection) {
 				currentSection = c.section;
 				jForm.append('<div class="controlSection" data-section="${StringTools.htmlEscape(currentSection)}"><h2>${StringTools.htmlEscape(currentSection)}</h2></div>');
 			}
 			jForm.children().last().append(makeControlHtml(c));
 		}
 
-		jPage.find("[data-param]").on("input change", (ev:js.jquery.Event)->{
+		jPage.find("[data-param]").on("input change", (ev:js.jquery.Event) -> {
 			var jInput = ev.getThis();
 			var key = jInput.attr("data-param");
 			var old = getControlValue(key);
 			var value:Dynamic;
-			if( jInput.attr("type")=="checkbox" ) {
+			if (jInput.attr("type") == "checkbox") {
 				var input:InputElement = cast jInput.get(0);
 				value = input.checked;
-			}
-			else
+			} else
 				value = jInput.val();
 			setControlValue(key, value);
 			updateControlValue(key);
 
-			if( Std.string(old)!=Std.string(getControlValue(key)) ) {
-				if( WorldMapParams.isGeneratorParam(key) )
+			if (Std.string(old) != Std.string(getControlValue(key))) {
+				if (WorldMapParams.isGeneratorParam(key))
 					debounceGenerate();
-				else if( renderer!=null ) {
+				else if (renderer != null) {
 					renderer.updateParams(params);
 					resizeMapFrame();
 				}
@@ -108,52 +107,47 @@ class WorldMapEditor extends Page {
 			}
 		});
 
-		jPage.find(".borderPreview")
-			.on("mouseenter", (ev:js.jquery.Event)->{
-				if( renderer!=null )
-					renderer.activeBorderHighlight = ev.getThis().attr("data-border");
-			})
-			.on("mouseleave", (_)->{
-				if( renderer!=null )
-					renderer.activeBorderHighlight = null;
-			});
+		jPage.find(".borderPreview").on("mouseenter", (ev:js.jquery.Event) -> {
+			if (renderer != null)
+				renderer.activeBorderHighlight = ev.getThis().attr("data-border");
+		}).on("mouseleave", (_) -> {
+			if (renderer != null)
+				renderer.activeBorderHighlight = null;
+		});
 
-		for( c in getControls() )
+		for (c in getControls())
 			updateControlValue(c.key);
-		log("controls ready", { count:getControls().length });
+		log("controls ready", {count: getControls().length});
 	}
 
 	function makeControlHtml(c:WorldMapControl):String {
 		var value = getControlValue(c.key);
 		var label = StringTools.htmlEscape(c.label);
-		var border = c.border!=null ? '<button type="button" class="borderPreview" data-border="${c.border}">view</button>' : "";
-		var valueHtml = c.type=="check" ? "" : '<span class="value value-${c.key}"></span>';
+		var border = c.border != null ? '<button type="button" class="borderPreview" data-border="${c.border}">view</button>' : "";
+		var valueHtml = c.type == "check" ? "" : '<span class="value value-${c.key}"></span>';
 		var input = switch c.type {
 			case "text":
 				'<input type="text" data-param="${c.key}" value="${StringTools.htmlEscape(Std.string(value))}"/>';
 			case "check":
-				'<input type="checkbox" data-param="${c.key}" ${Std.string(value)=="true" ? "checked" : ""}/>';
+				'<input type="checkbox" data-param="${c.key}" ${Std.string(value) == "true" ? "checked" : ""}/>';
 			case _:
 				'<input type="range" data-param="${c.key}" min="${c.min}" max="${c.max}" step="${c.step}" value="${value}"/>';
 		}
-		var tip = c.tip==null ? "" : '<div class="tip">${StringTools.htmlEscape(c.tip)}</div>';
+		var tip = c.tip == null ? "" : '<div class="tip">${StringTools.htmlEscape(c.tip)}</div>';
 		return '<div class="control control-${c.key}"><label><span>$label$border</span>$valueHtml</label>$input$tip</div>';
 	}
 
 	function updateControlValue(key:String) {
 		var value = getControlValue(key);
-		var text = Std.isOfType(value, Float)
-			? Std.string(Math.round((value:Float)*100)/100)
-			: Std.string(value);
-		if( key=="resolution" )
+		var text = Std.isOfType(value, Float) ? Std.string(Math.round((value : Float) * 100) / 100) : Std.string(value);
+		if (key == "resolution")
 			text = '${params.resolution} x ${Math.round(params.resolution / WorldMapParams.GOLDEN_RATIO)}';
 		jPage.find('.value-$key').text(text);
 		var jInput = jPage.find('[data-param="$key"]');
-		if( jInput.attr("type")=="checkbox" ) {
+		if (jInput.attr("type") == "checkbox") {
 			var input:InputElement = cast jInput.get(0);
-			input.checked = Std.string(value)=="true";
-		}
-		else
+			input.checked = Std.string(value) == "true";
+		} else
 			jInput.val(Std.string(value));
 	}
 
@@ -178,55 +172,54 @@ class WorldMapEditor extends Page {
 
 	function initButtons() {
 		log("init buttons");
-		jPage.find(".backHome").click(_->App.ME.loadPage(()->new Home()));
-		jPage.find(".generateMap").click(_->generateMap());
-		jPage.find(".randomSeed").click(_->randomizeSeed());
-		jPage.find(".saveSettings").click(_->{
+		jPage.find(".backHome").click(_ -> App.ME.loadPage(() -> new Home()));
+		jPage.find(".generateMap").click(_ -> generateMap());
+		jPage.find(".randomSeed").click(_ -> randomizeSeed());
+		jPage.find(".saveSettings").click(_ -> {
 			params.saveToLocalStorage();
 			saveDraftState();
 			setStatus("Settings saved");
 		});
-		jPage.find(".resetDefaults").click(_->{
+		jPage.find(".resetDefaults").click(_ -> {
 			WorldMapParams.clearSaved();
-				params = WorldMapParams.defaultParams();
-				worldId = "golden_age";
-				worldName = "Golden Age";
-				lastExportSignature = null;
-				lastDraftSignature = null;
-				syncExportSignatureAfterNextGenerate = false;
-				for( c in getControls() )
-					updateControlValue(c.key);
+			params = WorldMapParams.defaultParams();
+			worldId = "golden_age";
+			worldName = "Golden Age";
+			lastExportSignature = null;
+			lastDraftSignature = null;
+			syncExportSignatureAfterNextGenerate = false;
+			for (c in getControls())
+				updateControlValue(c.key);
 			saveDraftState();
 			setStatus("Default settings restored");
 			generateMap();
 		});
-		jPage.find(".exportWorld").click(_->exportWorld());
-		jPage.find(".legendToggle").click(_->{
+		jPage.find(".exportWorld").click(_ -> exportWorld());
+		jPage.find(".legendToggle").click(_ -> {
 			showLegend = !showLegend;
-			if( showLegend )
+			if (showLegend)
 				jPage.find(".legend").addClass("visible");
 			else
 				jPage.find(".legend").removeClass("visible");
 		});
-		jPage.find(".fullMap").click(_->toggleFullscreen());
+		jPage.find(".fullMap").click(_ -> toggleFullscreen());
 		initLocationPopup();
 	}
 
 	function initOpeningScreen() {
-		jPage.find(".newWorld").click(_->startNewWorld());
-		jPage.find(".openWorld").click(_->openWorldFile());
-		if( hasDraftState() )
-			jPage.find(".resumeDraftWorld").show().click(_->resumeDraftWorld());
+		jPage.find(".newWorld").click(_ -> startNewWorld());
+		jPage.find(".openWorld").click(_ -> openWorldFile());
+		if (hasDraftState())
+			jPage.find(".resumeDraftWorld").show().click(_ -> resumeDraftWorld());
 		else
 			jPage.find(".resumeDraftWorld").hide();
 
 		var recentFile = App.ME.settings.getUiDir("WorldMapEditorFile", null);
-		if( recentFile!=null && NT.fileExists(recentFile) ) {
+		if (recentFile != null && NT.fileExists(recentFile)) {
 			var fp = dn.FilePath.fromFile(recentFile);
-			jPage.find(".openRecentWorld").show().click(_->loadWorldFromFile(recentFile));
+			jPage.find(".openRecentWorld").show().click(_ -> loadWorldFromFile(recentFile));
 			jPage.find(".recentWorldInfo").show().html('<em>Recent: ${StringTools.htmlEscape(fp.fileWithExt)}</em>');
-		}
-		else {
+		} else {
 			jPage.find(".openRecentWorld").hide();
 			jPage.find(".recentWorldInfo").hide().empty();
 		}
@@ -251,7 +244,7 @@ class WorldMapEditor extends Page {
 	}
 
 	function resumeDraftWorld() {
-		if( !loadDraftState() ) {
+		if (!loadDraftState()) {
 			setStatus("No draft found");
 			return;
 		}
@@ -262,8 +255,8 @@ class WorldMapEditor extends Page {
 
 	function openWorldFile() {
 		var dir = App.ME.settings.getUiDir("WorldMapEditor", App.ME.getDefaultDialogDir());
-		dn.js.ElectronDialogs.openFile([".json"], dir, (filePath)->{
-			if( filePath==null )
+		dn.js.ElectronDialogs.openFile([".json"], dir, (filePath) -> {
+			if (filePath == null)
 				return;
 			loadWorldFromFile(filePath);
 		});
@@ -273,44 +266,43 @@ class WorldMapEditor extends Page {
 		try {
 			var raw = NT.readFileString(path);
 			var json:Dynamic = haxe.Json.parse(raw);
-			if( json==null )
+			if (json == null)
 				throw "Missing JSON data";
 
 			var loadedParams = WorldMapParams.defaultParams();
-				locationAssetPaths = new Map();
-				locationLocalPaths = new Map();
-				lastExportSignature = null;
-				lastDraftSignature = null;
-				syncExportSignatureAfterNextGenerate = false;
-				selectedLocation = null;
-				selectedIslandId = null;
+			locationAssetPaths = new Map();
+			locationLocalPaths = new Map();
+			lastExportSignature = null;
+			lastDraftSignature = null;
+			syncExportSignatureAfterNextGenerate = false;
+			selectedLocation = null;
+			selectedIslandId = null;
 
-			if( Reflect.field(json, "schema_version")==WorldMapExport.SCHEMA_VERSION ) {
+			if (Reflect.field(json, "schema_version") == WorldMapExport.SCHEMA_VERSION) {
 				worldId = readStringField(json, "id", "golden_age");
 				worldName = readStringField(json, "name", "Golden Age");
 				startNodeId = readNullableStringField(json, "start_node_id");
 				var nodes:Array<Dynamic> = cast Reflect.field(json, "nodes");
-				if( nodes!=null )
-					for( node in nodes ) {
+				if (nodes != null)
+					for (node in nodes) {
 						var nodeId = readNullableStringField(node, "id");
 						var mapPath = readNullableStringField(node, "map");
-						if( nodeId!=null && mapPath!=null )
+						if (nodeId != null && mapPath != null)
 							locationAssetPaths.set(nodeId, mapPath);
 					}
 
 				var editorMeta = Reflect.field(json, "editor_meta");
-					if( editorMeta!=null ) {
-						loadedParams.applyDynamic(Reflect.field(editorMeta, "generator_params"));
-						locationLocalPaths = readStringMap(Reflect.field(editorMeta, "local_ldtk_paths"));
-					}
-					syncExportSignatureAfterNextGenerate = true;
+				if (editorMeta != null) {
+					loadedParams.applyDynamic(Reflect.field(editorMeta, "generator_params"));
+					locationLocalPaths = readStringMap(Reflect.field(editorMeta, "local_ldtk_paths"));
 				}
-			else {
-				if( Reflect.field(json, "format")!=WORLD_MAP_EXPORT_FORMAT )
+				syncExportSignatureAfterNextGenerate = true;
+			} else {
+				if (Reflect.field(json, "format") != WORLD_MAP_EXPORT_FORMAT)
 					throw "Unsupported world map JSON format";
-				if( Reflect.field(json, "version")!=WORLD_MAP_EXPORT_VERSION )
+				if (Reflect.field(json, "version") != WORLD_MAP_EXPORT_VERSION)
 					throw "Unsupported world map JSON version";
-				if( !Reflect.hasField(json, "params") || Reflect.field(json, "params")==null )
+				if (!Reflect.hasField(json, "params") || Reflect.field(json, "params") == null)
 					throw "Missing top-level params object";
 				loadedParams.applyDynamic(Reflect.field(json, "params"));
 				worldId = "golden_age";
@@ -324,8 +316,7 @@ class WorldMapEditor extends Page {
 			revealEditor();
 			saveDraftState();
 			generateMap();
-		}
-		catch( err:Dynamic ) {
+		} catch (err:Dynamic) {
 			logError("load failed", err);
 			setStatus("World map load failed");
 			N.error("World map JSON load failed: " + Std.string(err));
@@ -346,41 +337,40 @@ class WorldMapEditor extends Page {
 	}
 
 	function updateAllControlValues() {
-		for( c in getControls() )
+		for (c in getControls())
 			updateControlValue(c.key);
 	}
 
 	function initCanvas() {
 		var canvas:CanvasElement = cast jPage.find("#worldMapCanvas").get(0);
-		log("init canvas", { found:canvas!=null });
+		log("init canvas", {found: canvas != null});
 		renderer = new WorldMapRenderer(canvas);
 
-		canvas.addEventListener("mousemove", (ev:MouseEvent)->{
-			if( mapData==null || renderer==null )
+		canvas.addEventListener("mousemove", (ev:MouseEvent) -> {
+			if (mapData == null || renderer == null)
 				return;
 			var p = getMapPoint(ev);
-			if( p==null )
+			if (p == null)
 				return;
 			var loc = getLocationAt(p.x, p.y);
-			renderer.activeLocation = loc!=null ? loc : selectedLocation;
-			renderer.activeIslandId = loc!=null || selectedLocation!=null ? null : getIslandIdAt(p.x, p.y);
+			renderer.activeLocation = loc != null ? loc : selectedLocation;
+			renderer.activeIslandId = loc != null || selectedLocation != null ? null : getIslandIdAt(p.x, p.y);
 		});
-		canvas.addEventListener("mouseleave", (_)->{
-			if( renderer!=null ) {
+		canvas.addEventListener("mouseleave", (_) -> {
+			if (renderer != null) {
 				renderer.activeLocation = selectedLocation;
 				renderer.activeIslandId = null;
 			}
 		});
-		canvas.addEventListener("click", (ev:MouseEvent)->{
+		canvas.addEventListener("click", (ev:MouseEvent) -> {
 			var p = getMapPoint(ev);
-			if( p==null || renderer==null )
+			if (p == null || renderer == null)
 				return;
 			var loc = getLocationAt(p.x, p.y);
-			if( loc!=null ) {
+			if (loc != null) {
 				selectedLocation = loc;
 				selectedIslandId = null;
-			}
-			else {
+			} else {
 				selectedLocation = null;
 				selectedIslandId = getIslandIdAt(p.x, p.y);
 			}
@@ -389,33 +379,33 @@ class WorldMapEditor extends Page {
 			updateIslandInfo();
 			updateLocationPopup();
 		});
-		Browser.window.addEventListener("resize", (_)->resizeMapFrame());
+		Browser.window.addEventListener("resize", (_) -> resizeMapFrame());
 	}
 
 	function debounceGenerate() {
-		if( !worldLoaded )
+		if (!worldLoaded)
 			return;
-		if( generateTimeout!=null )
+		if (generateTimeout != null)
 			Browser.window.clearTimeout(generateTimeout);
 		setStatus("Generating...");
-		generateTimeout = Browser.window.setTimeout(()->generateMap(), 150);
+		generateTimeout = Browser.window.setTimeout(() -> generateMap(), 150);
 	}
 
 	function generateMap() {
-		if( generateTimeout!=null ) {
+		if (generateTimeout != null) {
 			Browser.window.clearTimeout(generateTimeout);
 			generateTimeout = null;
 		}
 		setStatus("Generating...");
 		log("generate queued", getParamsSummary());
-		Browser.window.setTimeout(()->{
+		Browser.window.setTimeout(() -> {
 			try {
 				var t0 = Browser.window.performance.now();
 				log("generate start", getParamsSummary());
 				var generator = new WorldMapGenerator(params);
-				mapData = generator.generate((msg)->{
+				mapData = generator.generate((msg) -> {
 					setStatus(msg);
-					log("generate progress: "+msg);
+					log("generate progress: " + msg);
 				});
 				selectedIslandId = null;
 				ensureLocationStateIsValid();
@@ -429,7 +419,7 @@ class WorldMapEditor extends Page {
 					streams: mapData.streams.length,
 				});
 				var r = renderer;
-				if( r==null ) {
+				if (r == null) {
 					log("render skipped: missing renderer");
 					return;
 				}
@@ -439,84 +429,82 @@ class WorldMapEditor extends Page {
 				log("render start");
 				r.render(mapData, params);
 				log("render done", getCanvasSummary());
-					resizeMapFrame();
-					log("resize done", getCanvasSummary());
-					updateIslandInfo();
-					updateLocationPopup();
-					saveDraftState();
-					if( syncExportSignatureAfterNextGenerate ) {
-						lastExportSignature = makeCurrentWorldSignature();
-						syncExportSignatureAfterNextGenerate = false;
-					}
-					var t1 = Browser.window.performance.now();
-				setStatus('Generated in ${Math.round(t1-t0)}ms');
-				log("generate complete", { ms:Math.round(t1-t0) });
-			}
-			catch( err:Dynamic ) {
+				resizeMapFrame();
+				log("resize done", getCanvasSummary());
+				updateIslandInfo();
+				updateLocationPopup();
+				saveDraftState();
+				if (syncExportSignatureAfterNextGenerate) {
+					lastExportSignature = makeCurrentWorldSignature();
+					syncExportSignatureAfterNextGenerate = false;
+				}
+				var t1 = Browser.window.performance.now();
+				setStatus('Generated in ${Math.round(t1 - t0)}ms');
+				log("generate complete", {ms: Math.round(t1 - t0)});
+			} catch (err:Dynamic) {
 				var msg = Std.string(err);
-				setStatus("World map error: "+msg);
+				setStatus("World map error: " + msg);
 				logError("generate failed", err);
 			}
 		}, 10);
 	}
 
 	function resizeMapFrame() {
-		if( mapData==null )
+		if (mapData == null)
 			return;
 		var area:Element = cast jPage.find(".mapArea").get(0);
 		var frame = jPage.find("#worldMapFrame");
 		var availW = area.clientWidth - 48;
 		var availH = area.clientHeight - 48;
 		log("resize start", {
-			areaWidth:area.clientWidth,
-			areaHeight:area.clientHeight,
-			availableWidth:availW,
-			availableHeight:availH,
+			areaWidth: area.clientWidth,
+			areaHeight: area.clientHeight,
+			availableWidth: availW,
+			availableHeight: availH,
 		});
 		var mapRatio = mapData.width / mapData.height;
 		var availRatio = availW / availH;
-		if( mapRatio>availRatio ) {
+		if (mapRatio > availRatio) {
 			frame.width(availW);
 			frame.height(availW / mapRatio);
-		}
-		else {
+		} else {
 			frame.height(availH);
 			frame.width(availH * mapRatio);
 		}
 	}
 
 	function getMapPoint(ev:MouseEvent):Null<MapPoint> {
-		if( mapData==null )
+		if (mapData == null)
 			return null;
 		var canvas:CanvasElement = cast jPage.find("#worldMapCanvas").get(0);
 		var rect = canvas.getBoundingClientRect();
 		var x = Math.floor(((ev.clientX - rect.left) / rect.width) * mapData.width);
 		var y = Math.floor(((ev.clientY - rect.top) / rect.height) * mapData.height);
-		return { x:Std.int(Math.max(0, Math.min(mapData.width-1, x))), y:Std.int(Math.max(0, Math.min(mapData.height-1, y))) };
+		return {x: Std.int(Math.max(0, Math.min(mapData.width - 1, x))), y: Std.int(Math.max(0, Math.min(mapData.height - 1, y)))};
 	}
 
 	function getIslandIdAt(x:Int, y:Int):Null<Int> {
 		var tile = mapData.getTile(x, y);
-		return tile==null ? null : tile.islandId;
+		return tile == null ? null : tile.islandId;
 	}
 
 	function getLocationAt(x:Int, y:Int):Null<ActiveLocation> {
 		var best:Null<ActiveLocation> = null;
 		var bestD = 25.;
-		if( params.showSettlements )
-			for( city in mapData.cities ) {
-				var d = distSq(city.x+0.5, city.y+0.5, x, y);
-				if( d<=bestD ) {
+		if (params.showSettlements)
+			for (city in mapData.cities) {
+				var d = distSq(city.x + 0.5, city.y + 0.5, x, y);
+				if (d <= bestD) {
 					bestD = d;
-					best = { type:"city", id:city.id };
+					best = {type: "city", id: city.id};
 				}
 			}
-		if( params.showPointsOfInterest )
-			for( point in mapData.pointsOfInterest ) {
-				var d = distSq(point.x+0.5, point.y+0.5, x, y);
-				if( d<=bestD ) {
+		if (params.showPointsOfInterest)
+			for (point in mapData.pointsOfInterest) {
+				var d = distSq(point.x + 0.5, point.y + 0.5, x, y);
+				if (d <= bestD) {
 					bestD = d;
-					best = { type:"poi", id:point.id };
+					best = {type: "poi", id: point.id};
 				}
 			}
 		return best;
@@ -524,34 +512,35 @@ class WorldMapEditor extends Page {
 
 	function updateIslandInfo() {
 		var jInfo = jPage.find(".islandInfo");
-		if( selectedIslandId==null || mapData==null ) {
+		if (selectedIslandId == null || mapData == null) {
 			jInfo.hide().empty();
 			return;
 		}
-		for( island in mapData.islands )
-			if( island.id==selectedIslandId ) {
-				var cities = mapData.cities.filter(c -> c.islandId==island.id).length;
-				var points = mapData.pointsOfInterest.filter(p -> p.islandId==island.id).length;
+		for (island in mapData.islands)
+			if (island.id == selectedIslandId) {
+				var cities = mapData.cities.filter(c -> c.islandId == island.id).length;
+				var points = mapData.pointsOfInterest.filter(p -> p.islandId == island.id).length;
 				var area = island.tiles.length * params.kmPerTile * params.kmPerTile;
-				jInfo.html('<strong>${StringTools.htmlEscape(island.name)}</strong><br/>Area: ${round2(area)} km2 &nbsp; Cities: $cities &nbsp; POI: $points').show();
+				jInfo.html('<strong>${StringTools.htmlEscape(island.name)}</strong><br/>Area: ${round2(area)} km2 &nbsp; Cities: $cities &nbsp; POI: $points')
+					.show();
 				return;
 			}
 		jInfo.hide().empty();
 	}
 
 	function initLocationPopup() {
-		jPage.find(".locationPopup .popupClose").click(_->closeLocationPopup());
-		jPage.find(".createLocationMap").click(_->createSelectedLocationMap());
-		jPage.find(".assignLocationMap").click(_->assignSelectedLocationMap());
-		jPage.find(".relinkLocationMap").click(_->assignSelectedLocationMap());
-		jPage.find(".openLocationMap").click(_->openSelectedLocationMap());
-		jPage.find(".setStartLocation").click(_->setSelectedLocationAsStart());
+		jPage.find(".locationPopup .popupClose").click(_ -> closeLocationPopup());
+		jPage.find(".createLocationMap").click(_ -> createSelectedLocationMap());
+		jPage.find(".assignLocationMap").click(_ -> assignSelectedLocationMap());
+		jPage.find(".relinkLocationMap").click(_ -> assignSelectedLocationMap());
+		jPage.find(".openLocationMap").click(_ -> openSelectedLocationMap());
+		jPage.find(".setStartLocation").click(_ -> setSelectedLocationAsStart());
 		updateLocationPopup();
 	}
 
 	function closeLocationPopup() {
 		selectedLocation = null;
-		if( renderer!=null )
+		if (renderer != null)
 			renderer.activeLocation = null;
 		updateLocationPopup();
 	}
@@ -559,21 +548,21 @@ class WorldMapEditor extends Page {
 	function updateLocationPopup() {
 		var jPopup = jPage.find(".locationPopup");
 		var info = getSelectedLocationInfo();
-		if( info==null ) {
+		if (info == null) {
 			jPopup.removeClass("visible");
 			return;
 		}
 
 		var assetPath = locationAssetPaths.get(info.nodeId);
 		var localPath = locationLocalPaths.get(info.nodeId);
-		var localExists = localPath!=null && NT.fileExists(localPath);
-		var hasMap = assetPath!=null && assetPath.length>0;
-		var typeLabel = info.type=="city" ? "City" : "POI";
+		var localExists = localPath != null && NT.fileExists(localPath);
+		var hasMap = assetPath != null && assetPath.length > 0;
+		var typeLabel = info.type == "city" ? "City" : "POI";
 
 		jPopup.find(".locationName").text(info.name);
 		jPopup.find(".locationMeta").text('$typeLabel / ${info.kind} / ${info.x}, ${info.y}');
 		jPopup.find(".locationNodeId").text(info.nodeId);
-		if( hasMap )
+		if (hasMap)
 			jPopup.find(".locationMapStatus").text(localExists ? 'Map: $assetPath' : 'Map: $assetPath (local file missing)');
 		else
 			jPopup.find(".locationMapStatus").text("Map: not assigned");
@@ -582,21 +571,21 @@ class WorldMapEditor extends Page {
 		setVisible(jPopup.find(".openLocationMap"), localExists);
 		setVisible(jPopup.find(".relinkLocationMap"), hasMap && !localExists);
 		var jStart = jPopup.find(".setStartLocation");
-		jStart.prop("disabled", startNodeId==info.nodeId);
-		jStart.text(startNodeId==info.nodeId ? "Start node" : "Set as start");
+		jStart.prop("disabled", startNodeId == info.nodeId);
+		jStart.text(startNodeId == info.nodeId ? "Start node" : "Set as start");
 		jPopup.addClass("visible");
 	}
 
 	function getSelectedLocationInfo():Null<WorldMapLocationInfo> {
-		return selectedLocation==null ? null : getLocationInfo(cast selectedLocation);
+		return selectedLocation == null ? null : getLocationInfo(cast selectedLocation);
 	}
 
 	function getLocationInfo(loc:ActiveLocation):Null<WorldMapLocationInfo> {
-		if( mapData==null || loc==null )
+		if (mapData == null || loc == null)
 			return null;
-		if( loc.type=="city" )
-			for( city in mapData.cities )
-				if( city.id==loc.id )
+		if (loc.type == "city")
+			for (city in mapData.cities)
+				if (city.id == loc.id)
 					return {
 						nodeId: WorldMapExport.getNodeId("city", city.id),
 						name: city.name,
@@ -605,9 +594,9 @@ class WorldMapEditor extends Page {
 						y: city.y,
 						kind: city.kind,
 					};
-		if( loc.type=="poi" )
-			for( point in mapData.pointsOfInterest )
-				if( point.id==loc.id )
+		if (loc.type == "poi")
+			for (point in mapData.pointsOfInterest)
+				if (point.id == loc.id)
 					return {
 						nodeId: WorldMapExport.getNodeId("poi", point.id),
 						name: point.name,
@@ -621,20 +610,20 @@ class WorldMapEditor extends Page {
 
 	function createSelectedLocationMap() {
 		var info = getSelectedLocationInfo();
-		if( info==null )
+		if (info == null)
 			return;
 		var dir = App.ME.settings.getUiDir("WorldMapLocationMap", App.ME.getDefaultDialogDir());
 		var defaultPath = dir + "/" + sanitizeFileName(info.nodeId) + "." + Const.FILE_EXTENSION;
-		dn.js.ElectronDialogs.saveFileAs(["."+Const.FILE_EXTENSION], defaultPath, (filePath)->{
-			if( filePath==null )
+		dn.js.ElectronDialogs.saveFileAs(["." + Const.FILE_EXTENSION], defaultPath, (filePath) -> {
+			if (filePath == null)
 				return;
 			var fp = dn.FilePath.fromFile(filePath);
 			fp.extension = Const.FILE_EXTENSION;
 			App.ME.settings.storeUiDir("WorldMapLocationMap", fp.directory);
 
 			var project = data.Project.createEmpty(fp.full);
-			new ui.ProjectSaver(this, project, (success)->{
-				if( !success ) {
+			new ui.ProjectSaver(this, project, (success) -> {
+				if (!success) {
 					N.error("Location map creation failed");
 					return;
 				}
@@ -648,12 +637,13 @@ class WorldMapEditor extends Page {
 
 	function assignSelectedLocationMap() {
 		var info = getSelectedLocationInfo();
-		if( info==null )
+		if (info == null)
 			return;
 		var curLocalPath = locationLocalPaths.get(info.nodeId);
-		var dir = curLocalPath!=null ? dn.FilePath.extractDirectoryWithoutSlash(curLocalPath, true) : App.ME.settings.getUiDir("WorldMapLocationMap", App.ME.getDefaultDialogDir());
-		dn.js.ElectronDialogs.openFile(["."+Const.FILE_EXTENSION], dir, (filePath)->{
-			if( filePath==null )
+		var dir = curLocalPath != null ? dn.FilePath.extractDirectoryWithoutSlash(curLocalPath,
+			true) : App.ME.settings.getUiDir("WorldMapLocationMap", App.ME.getDefaultDialogDir());
+		dn.js.ElectronDialogs.openFile(["." + Const.FILE_EXTENSION], dir, (filePath) -> {
+			if (filePath == null)
 				return;
 			assignLocationMap(info.nodeId, filePath);
 			saveDraftState();
@@ -663,10 +653,10 @@ class WorldMapEditor extends Page {
 
 	function openSelectedLocationMap() {
 		var info = getSelectedLocationInfo();
-		if( info==null )
+		if (info == null)
 			return;
 		var localPath = locationLocalPaths.get(info.nodeId);
-		if( localPath==null || !NT.fileExists(localPath) ) {
+		if (localPath == null || !NT.fileExists(localPath)) {
 			updateLocationPopup();
 			return;
 		}
@@ -679,14 +669,14 @@ class WorldMapEditor extends Page {
 		var dialog = new ui.modal.Dialog(jPage.find(".openLocationMap"), "worldMapOpenLocation");
 		dialog.addTitle(L.t._("Open location map"), true);
 		dialog.addParagraph(L.t._("Before opening the LDtk location map, choose how to handle the current world draft."));
-		dialog.addDiv(L.t._("Changes since export: ::state::", { state: changesSinceExport ? "yes" : "no" }), changesSinceExport ? "warning" : null);
-		dialog.addDiv(L.t._("Changes since draft: ::state::", { state: changesSinceDraft ? "yes" : "no" }), changesSinceDraft ? "warning" : null);
-		dialog.addButton(L.t._("Save draft and open"), "save", ()->{
+		dialog.addDiv(L.t._("Changes since export: ::state::", {state: changesSinceExport ? "yes" : "no"}), changesSinceExport ? "warning" : null);
+		dialog.addDiv(L.t._("Changes since draft: ::state::", {state: changesSinceDraft ? "yes" : "no"}), changesSinceDraft ? "warning" : null);
+		dialog.addButton(L.t._("Save draft and open"), "save", () -> {
 			dialog.close();
 			saveDraftState();
 			App.ME.loadProject(localPath);
 		});
-		dialog.addButton(L.t._("Open without saving draft"), "gray", ()->{
+		dialog.addButton(L.t._("Open without saving draft"), "gray", () -> {
 			dialog.close();
 			App.ME.loadProject(localPath);
 		});
@@ -695,7 +685,7 @@ class WorldMapEditor extends Page {
 
 	function setSelectedLocationAsStart() {
 		var info = getSelectedLocationInfo();
-		if( info==null )
+		if (info == null)
 			return;
 		startNodeId = info.nodeId;
 		saveDraftState();
@@ -712,10 +702,12 @@ class WorldMapEditor extends Page {
 	}
 
 	function randomizeSeed() {
-		var words = ["PIRATE", "SAIL", "RUM", "ISLAND", "GOLD", "CANNON", "WIND", "SKULL", "BONE", "TIDE", "STORM", "CURSE"];
-		var r1 = words[Math.floor(Math.random()*words.length)];
-		var r2 = words[Math.floor(Math.random()*words.length)];
-		var num = Math.floor(Math.random()*9999);
+		var words = [
+			"PIRATE", "SAIL", "RUM", "ISLAND", "GOLD", "CANNON", "WIND", "SKULL", "BONE", "TIDE", "STORM", "CURSE"
+		];
+		var r1 = words[Math.floor(Math.random() * words.length)];
+		var r2 = words[Math.floor(Math.random() * words.length)];
+		var num = Math.floor(Math.random() * 9999);
 		params.seed = '${r1}_${r2}_${num}';
 		updateControlValue("seed");
 		saveDraftState();
@@ -723,11 +715,11 @@ class WorldMapEditor extends Page {
 	}
 
 	function exportPng() {
-		if( mapData==null )
+		if (mapData == null)
 			return;
 		var dir = App.ME.settings.getUiDir("WorldMapEditor", App.ME.getDefaultDialogDir());
-		dn.js.ElectronDialogs.saveFileAs([".png"], dir + "/ripped_sails_" + sanitizeFileName(params.seed) + ".png", (filePath)->{
-			if( filePath==null )
+		dn.js.ElectronDialogs.saveFileAs([".png"], dir + "/ripped_sails_" + sanitizeFileName(params.seed) + ".png", (filePath) -> {
+			if (filePath == null)
 				return;
 			var fp = dn.FilePath.fromFile(filePath);
 			fp.extension = "png";
@@ -735,28 +727,28 @@ class WorldMapEditor extends Page {
 			var canvas:CanvasElement = cast jPage.find("#worldMapCanvas").get(0);
 			var dataUrl = canvas.toDataURL("image/png");
 			var comma = dataUrl.indexOf(",");
-			if( comma<0 ) {
+			if (comma < 0) {
 				N.error("PNG export failed");
 				return;
 			}
-			NT.writeFileBytes(fp.full, Base64.decode(dataUrl.substr(comma+1)));
+			NT.writeFileBytes(fp.full, Base64.decode(dataUrl.substr(comma + 1)));
 			N.success("World map PNG exported", fp.fileWithExt);
 		});
 	}
 
 	function exportWorld() {
-		if( mapData==null )
+		if (mapData == null)
 			return;
 		var dir = App.ME.settings.getUiDir("WorldMapExport", App.ME.getDefaultDialogDir());
-		dn.js.ElectronDialogs.openDir(dir, (dirPath)->{
-			if( dirPath==null )
+		dn.js.ElectronDialogs.openDir(dir, (dirPath) -> {
+			if (dirPath == null)
 				return;
 			var fp = dn.FilePath.fromDir(dirPath);
 			fp.useSlashes();
 			App.ME.settings.storeUiDir("WorldMapExport", fp.full);
 
-			var pngBytes = getCanvasPngBytes();
-			if( pngBytes==null ) {
+			var pngBytes = getWorldExportPngBytes();
+			if (pngBytes == null) {
 				N.error("PNG export failed");
 				return;
 			}
@@ -773,27 +765,28 @@ class WorldMapEditor extends Page {
 	}
 
 	function exportJson() {
-		if( mapData==null )
+		if (mapData == null)
 			return;
 		saveJson("map_" + sanitizeFileName(params.seed) + ".json", haxe.Json.stringify(makeWorldSaveExport(), null, "  "), "World map JSON exported", true);
 	}
 
 	function exportLocationsJson() {
-		if( mapData==null )
+		if (mapData == null)
 			return;
-		saveJson("locations_" + sanitizeFileName(params.seed) + ".json", haxe.Json.stringify(makeLocationsExport(), null, "  "), "World locations JSON exported");
+		saveJson("locations_" + sanitizeFileName(params.seed) + ".json", haxe.Json.stringify(makeLocationsExport(), null, "  "),
+			"World locations JSON exported");
 	}
 
-	function saveJson(fileName:String, raw:String, success:String, rememberAsWorldFile=false) {
+	function saveJson(fileName:String, raw:String, success:String, rememberAsWorldFile = false) {
 		var dir = App.ME.settings.getUiDir("WorldMapEditor", App.ME.getDefaultDialogDir());
-		dn.js.ElectronDialogs.saveFileAs([".json"], dir + "/" + fileName, (filePath)->{
-			if( filePath==null )
+		dn.js.ElectronDialogs.saveFileAs([".json"], dir + "/" + fileName, (filePath) -> {
+			if (filePath == null)
 				return;
 			var fp = dn.FilePath.fromFile(filePath);
 			fp.extension = "json";
 			App.ME.settings.storeUiDir("WorldMapEditor", fp.directory);
 			NT.writeFileString(fp.full, raw);
-			if( rememberAsWorldFile )
+			if (rememberAsWorldFile)
 				rememberWorldFile(fp.full);
 			N.success(success, fp.fileWithExt);
 		});
@@ -803,9 +796,31 @@ class WorldMapEditor extends Page {
 		var canvas:CanvasElement = cast jPage.find("#worldMapCanvas").get(0);
 		var dataUrl = canvas.toDataURL("image/png");
 		var comma = dataUrl.indexOf(",");
-		if( comma<0 )
+		if (comma < 0)
 			return null;
-		return Base64.decode(dataUrl.substr(comma+1));
+		return Base64.decode(dataUrl.substr(comma + 1));
+	}
+
+	function getWorldExportPngBytes():Null<haxe.io.Bytes> {
+		if (mapData == null)
+			return null;
+
+		var exportParams = params.clone();
+		exportParams.showClouds = false;
+		exportParams.showPointsOfInterest = false;
+		exportParams.showSettlements = false;
+
+		var canvas:CanvasElement = cast Browser.document.createElement("canvas");
+		var exportRenderer = new WorldMapRenderer(canvas);
+		exportRenderer.render(mapData, exportParams);
+
+		var dataUrl = canvas.toDataURL("image/png");
+		exportRenderer.dispose();
+
+		var comma = dataUrl.indexOf(",");
+		if (comma < 0)
+			return null;
+		return Base64.decode(dataUrl.substr(comma + 1));
 	}
 
 	function makeWorldSaveExport():Dynamic {
@@ -818,42 +833,26 @@ class WorldMapEditor extends Page {
 
 	function makeRuntimeWorldExport():Dynamic {
 		var cleanWorldId = sanitizeWorldId(worldId);
-		return WorldMapExport.makeWorldJson(
-			cleanWorldId,
-			worldName.length>0 ? worldName : cleanWorldId,
-			WORLD_MAP_IMAGE_ASSET_PATH,
-			startNodeId,
-			mapData,
-			params.toJson(),
-			locationAssetPaths,
-			locationLocalPaths
-		);
+		return WorldMapExport.makeWorldJson(cleanWorldId, worldName.length > 0 ? worldName : cleanWorldId, WORLD_MAP_IMAGE_ASSET_PATH, startNodeId, mapData,
+			params.toJson(), locationAssetPaths, locationLocalPaths);
 	}
 
 	function makeCurrentWorldSignature():Null<String> {
-		if( mapData==null )
+		if (mapData == null)
 			return null;
 		var cleanWorldId = sanitizeWorldId(worldId);
-		return WorldMapExport.makeStateSignature(
-			cleanWorldId,
-			worldName.length>0 ? worldName : cleanWorldId,
-			WORLD_MAP_IMAGE_ASSET_PATH,
-			startNodeId,
-			mapData,
-			params.toJson(),
-			locationAssetPaths,
-			locationLocalPaths
-		);
+		return WorldMapExport.makeStateSignature(cleanWorldId, worldName.length > 0 ? worldName : cleanWorldId, WORLD_MAP_IMAGE_ASSET_PATH, startNodeId,
+			mapData, params.toJson(), locationAssetPaths, locationLocalPaths);
 	}
 
 	function hasWorldChangesSinceExport():Bool {
 		var signature = makeCurrentWorldSignature();
-		return signature==null || lastExportSignature==null || signature!=lastExportSignature;
+		return signature == null || lastExportSignature == null || signature != lastExportSignature;
 	}
 
 	function hasWorldChangesSinceDraft():Bool {
 		var signature = makeCurrentWorldSignature();
-		return signature==null || lastDraftSignature==null || signature!=lastDraftSignature;
+		return signature == null || lastDraftSignature == null || signature != lastDraftSignature;
 	}
 
 	function makeLocationsExport():Dynamic {
@@ -861,27 +860,33 @@ class WorldMapEditor extends Page {
 			seed: params.seed,
 			width: mapData.width,
 			height: mapData.height,
-			cities: [for( city in mapData.cities ) {
-				id: city.id,
-				name: city.name,
-				x: city.x,
-				y: city.y,
-				kind: city.kind,
-				populationTier: city.populationTier,
-			}],
-			pointsOfInterest: [for( point in mapData.pointsOfInterest ) {
-				id: point.id,
-				name: point.name,
-				x: point.x,
-				y: point.y,
-				kind: point.kind,
-			}],
+			cities: [
+				for (city in mapData.cities)
+					{
+						id: city.id,
+						name: city.name,
+						x: city.x,
+						y: city.y,
+						kind: city.kind,
+						populationTier: city.populationTier,
+					}
+			],
+			pointsOfInterest: [
+				for (point in mapData.pointsOfInterest)
+					{
+						id: point.id,
+						name: point.name,
+						x: point.x,
+						y: point.y,
+						kind: point.kind,
+					}
+			],
 		};
 	}
 
 	function toggleFullscreen() {
 		var area:Element = cast jPage.find(".mapArea").get(0);
-		if( untyped Browser.document.fullscreenElement==null )
+		if (untyped Browser.document.fullscreenElement == null)
 			untyped area.requestFullscreen();
 		else
 			untyped Browser.document.exitFullscreen();
@@ -893,7 +898,7 @@ class WorldMapEditor extends Page {
 
 	function hasDraftState():Bool {
 		var raw = Browser.window.localStorage.getItem(WORLD_MAP_DRAFT_KEY);
-		return raw!=null && raw.length>0;
+		return raw != null && raw.length > 0;
 	}
 
 	function saveDraftState() {
@@ -909,8 +914,7 @@ class WorldMapEditor extends Page {
 			};
 			Browser.window.localStorage.setItem(WORLD_MAP_DRAFT_KEY, haxe.Json.stringify(draft));
 			lastDraftSignature = makeCurrentWorldSignature();
-		}
-		catch( err:Dynamic ) {
+		} catch (err:Dynamic) {
 			logError("draft save failed", err);
 		}
 	}
@@ -918,10 +922,10 @@ class WorldMapEditor extends Page {
 	function loadDraftState():Bool {
 		try {
 			var raw = Browser.window.localStorage.getItem(WORLD_MAP_DRAFT_KEY);
-			if( raw==null || raw.length==0 )
+			if (raw == null || raw.length == 0)
 				return false;
 			var draft:Dynamic = haxe.Json.parse(raw);
-			if( draft==null || Reflect.field(draft, "schema_version")!=WORLD_MAP_EXPORT_VERSION )
+			if (draft == null || Reflect.field(draft, "schema_version") != WORLD_MAP_EXPORT_VERSION)
 				return false;
 
 			var loadedParams = WorldMapParams.defaultParams();
@@ -929,17 +933,16 @@ class WorldMapEditor extends Page {
 			params = loadedParams;
 			worldId = readStringField(draft, "world_id", "golden_age");
 			worldName = readStringField(draft, "world_name", "Golden Age");
-				startNodeId = readNullableStringField(draft, "start_node_id");
-				locationAssetPaths = readStringMap(Reflect.field(draft, "location_maps"));
-				locationLocalPaths = readStringMap(Reflect.field(draft, "local_ldtk_paths"));
-				lastExportSignature = null;
-				lastDraftSignature = null;
-				syncExportSignatureAfterNextGenerate = false;
-				selectedLocation = null;
-				selectedIslandId = null;
+			startNodeId = readNullableStringField(draft, "start_node_id");
+			locationAssetPaths = readStringMap(Reflect.field(draft, "location_maps"));
+			locationLocalPaths = readStringMap(Reflect.field(draft, "local_ldtk_paths"));
+			lastExportSignature = null;
+			lastDraftSignature = null;
+			syncExportSignatureAfterNextGenerate = false;
+			selectedLocation = null;
+			selectedIslandId = null;
 			return true;
-		}
-		catch( err:Dynamic ) {
+		} catch (err:Dynamic) {
 			logError("draft load failed", err);
 			return false;
 		}
@@ -951,34 +954,34 @@ class WorldMapEditor extends Page {
 	}
 
 	function ensureLocationStateIsValid() {
-		if( selectedLocation!=null && !hasLocation(selectedLocation) )
+		if (selectedLocation != null && !hasLocation(selectedLocation))
 			selectedLocation = null;
-		if( startNodeId==null || !hasNodeId(startNodeId) )
+		if (startNodeId == null || !hasNodeId(startNodeId))
 			startNodeId = getFirstNodeId();
 	}
 
 	function hasLocation(loc:Null<ActiveLocation>):Bool {
-		return loc!=null && getLocationInfo(cast loc)!=null;
+		return loc != null && getLocationInfo(cast loc) != null;
 	}
 
 	function hasNodeId(nodeId:Null<String>):Bool {
-		if( mapData==null || nodeId==null )
+		if (mapData == null || nodeId == null)
 			return false;
-		for( city in mapData.cities )
-			if( WorldMapExport.getNodeId("city", city.id)==nodeId )
+		for (city in mapData.cities)
+			if (WorldMapExport.getNodeId("city", city.id) == nodeId)
 				return true;
-		for( point in mapData.pointsOfInterest )
-			if( WorldMapExport.getNodeId("poi", point.id)==nodeId )
+		for (point in mapData.pointsOfInterest)
+			if (WorldMapExport.getNodeId("poi", point.id) == nodeId)
 				return true;
 		return false;
 	}
 
 	function getFirstNodeId():Null<String> {
-		if( mapData==null )
+		if (mapData == null)
 			return null;
-		if( mapData.cities.length>0 )
+		if (mapData.cities.length > 0)
 			return WorldMapExport.getNodeId("city", mapData.cities[0].id);
-		if( mapData.pointsOfInterest.length>0 )
+		if (mapData.pointsOfInterest.length > 0)
 			return WorldMapExport.getNodeId("poi", mapData.pointsOfInterest[0].id);
 		return null;
 	}
@@ -1000,24 +1003,24 @@ class WorldMapEditor extends Page {
 		var frame = jPage.find("#worldMapFrame");
 		var area:Element = cast jPage.find(".mapArea").get(0);
 		return {
-			canvasWidth: canvas==null ? -1 : canvas.width,
-			canvasHeight: canvas==null ? -1 : canvas.height,
+			canvasWidth: canvas == null ? -1 : canvas.width,
+			canvasHeight: canvas == null ? -1 : canvas.height,
 			frameWidth: frame.width(),
 			frameHeight: frame.height(),
-			areaWidth: area==null ? -1 : area.clientWidth,
-			areaHeight: area==null ? -1 : area.clientHeight,
+			areaWidth: area == null ? -1 : area.clientWidth,
+			areaHeight: area == null ? -1 : area.clientHeight,
 		};
 	}
 
 	static function log(msg:String, ?data:Dynamic) {
-		if( data==null )
-			Browser.console.log("[WorldMapEditor] "+msg);
+		if (data == null)
+			Browser.console.log("[WorldMapEditor] " + msg);
 		else
-			Browser.console.log("[WorldMapEditor] "+msg, data);
+			Browser.console.log("[WorldMapEditor] " + msg, data);
 	}
 
 	static function logError(msg:String, err:Dynamic) {
-		Browser.console.error("[WorldMapEditor] "+msg, err);
+		Browser.console.error("[WorldMapEditor] " + msg, err);
 	}
 
 	override function onAppResize() {
@@ -1026,58 +1029,62 @@ class WorldMapEditor extends Page {
 	}
 
 	override function onDispose() {
-		if( generateTimeout!=null )
+		if (generateTimeout != null)
 			Browser.window.clearTimeout(generateTimeout);
-		if( renderer!=null )
+		if (renderer != null)
 			renderer.dispose();
-		if( ME==this )
+		if (ME == this)
 			ME = null;
 		super.onDispose();
 	}
 
 	static inline function distSq(x1:Float, y1:Float, x2:Float, y2:Float):Float {
-		var dx = x1-x2;
-		var dy = y1-y2;
-		return dx*dx + dy*dy;
+		var dx = x1 - x2;
+		var dy = y1 - y2;
+		return dx * dx + dy * dy;
 	}
 
-	static inline function round2(v:Float):Float return Math.round(v*100)/100;
-	static function sanitizeFileName(v:String):String return ~/[^a-z0-9_\-]+/ig.replace(v, "_");
+	static inline function round2(v:Float):Float
+		return Math.round(v * 100) / 100;
+
+	static function sanitizeFileName(v:String):String
+		return ~/[^a-z0-9_\-]+/ig.replace(v, "_");
+
 	static function sanitizeWorldId(v:String):String {
 		var out = sanitizeFileName(v.toLowerCase());
 		out = ~/_{2,}/g.replace(out, "_");
-		while( out.length>0 && out.charAt(0)=="_" )
+		while (out.length > 0 && out.charAt(0) == "_")
 			out = out.substr(1);
-		while( out.length>0 && out.charAt(out.length-1)=="_" )
-			out = out.substr(0, out.length-1);
-		return out.length>0 ? out : "world";
+		while (out.length > 0 && out.charAt(out.length - 1) == "_")
+			out = out.substr(0, out.length - 1);
+		return out.length > 0 ? out : "world";
 	}
 
 	static function readStringMap(raw:Dynamic):Map<String, String> {
 		var out:Map<String, String> = new Map();
-		if( raw!=null )
-			for( key in Reflect.fields(raw) ) {
+		if (raw != null)
+			for (key in Reflect.fields(raw)) {
 				var value = Reflect.field(raw, key);
-				if( value!=null )
+				if (value != null)
 					out.set(key, Std.string(value));
 			}
 		return out;
 	}
 
 	static function readNullableStringField(raw:Dynamic, key:String):Null<String> {
-		if( raw==null )
+		if (raw == null)
 			return null;
 		var value = Reflect.field(raw, key);
-		return value==null ? null : Std.string(value);
+		return value == null ? null : Std.string(value);
 	}
 
 	static function readStringField(raw:Dynamic, key:String, def:String):String {
 		var value = readNullableStringField(raw, key);
-		return value==null || value.length==0 ? def : value;
+		return value == null || value.length == 0 ? def : value;
 	}
 
 	static function setVisible(j:js.jquery.JQuery, visible:Bool) {
-		if( visible )
+		if (visible)
 			j.show();
 		else
 			j.hide();
@@ -1085,77 +1092,584 @@ class WorldMapEditor extends Page {
 
 	static function getControls():Array<WorldMapControl> {
 		return [
-			{ section:"General", key:"worldId", label:"World ID", type:"text" },
-			{ section:"General", key:"worldName", label:"World Name", type:"text" },
-			{ section:"General", key:"seed", label:"Seed", type:"text" },
-			{ section:"General", key:"resolution", label:"Map Resolution", type:"range", min:128, max:1536, step:32, tip:"Width; height uses golden ratio." },
-			{ section:"Island Layout", key:"clusters", label:"Clusters", type:"range", min:1, max:10, step:1 },
-			{ section:"Island Layout", key:"largeIslands", label:"Large Landmasses", type:"range", min:0, max:4, step:1 },
-			{ section:"Island Layout", key:"medIslands", label:"Medium Islands", type:"range", min:0, max:15, step:1 },
-			{ section:"Island Layout", key:"smallIslands", label:"Small Islands", type:"range", min:10, max:100, step:1 },
-			{ section:"Island Layout", key:"caribbeanness", label:"Caribbeanness", type:"range", min:0, max:1, step:0.05 },
-			{ section:"Terrain", key:"seaLevel", label:"Sea Level", type:"range", min:0.1, max:0.9, step:0.05 },
-			{ section:"Terrain", key:"coastIrregularity", label:"Coast Irregularity", type:"range", min:0, max:1, step:0.05 },
-			{ section:"Terrain", key:"forestDensity", label:"Forest Density", type:"range", min:0, max:1, step:0.05 },
-			{ section:"Terrain", key:"mountainIntensity", label:"Mountain Coverage", type:"range", min:0, max:1, step:0.05 },
-			{ section:"Terrain", key:"mountainSteepness", label:"Mountain Steepness", type:"range", min:0, max:1, step:0.05 },
-			{ section:"Terrain", key:"beachWidth", label:"Beach Width", type:"range", min:0, max:0.2, step:0.01 },
-			{ section:"Terrain", key:"reefFreq", label:"Reef Frequency", type:"range", min:0, max:1, step:0.05 },
-			{ section:"Streams", key:"enableStreams", label:"Generate Streams", type:"check" },
-			{ section:"Streams", key:"showStreams", label:"Show Streams", type:"check" },
-			{ section:"Streams", key:"streamCount", label:"Stream Count", type:"range", min:0, max:16, step:1 },
-			{ section:"Streams", key:"streamMeander", label:"Stream Meander", type:"range", min:0, max:1, step:0.05 },
-			{ section:"Streams", key:"streamTributaries", label:"Tributaries", type:"range", min:0, max:3, step:1 },
-			{ section:"Streams", key:"streamSourceBias", label:"Edge Source Bias", type:"range", min:0, max:1, step:0.05 },
-			{ section:"Cities and POI", key:"enableSettlements", label:"Generate Cities", type:"check" },
-			{ section:"Cities and POI", key:"enablePointsOfInterest", label:"Generate POI", type:"check" },
-			{ section:"Cities and POI", key:"showSettlements", label:"Show Cities", type:"check" },
-			{ section:"Cities and POI", key:"showPointsOfInterest", label:"Show POI", type:"check" },
-			{ section:"Cities and POI", key:"kmPerTile", label:"Km Per Tile", type:"range", min:0.1, max:2, step:0.1 },
-			{ section:"Cities and POI", key:"coastalLocationMinDistanceKm", label:"Min Location Distance", type:"range", min:0.5, max:20, step:0.5 },
-			{ section:"Cities and POI", key:"cityDensity", label:"City Density", type:"range", min:0, max:2, step:0.05 },
-			{ section:"Cities and POI", key:"poiDensity", label:"POI Density", type:"range", min:0, max:2, step:0.05 },
-			{ section:"Sea Routes", key:"enableRoutes", label:"Generate Routes", type:"check" },
-			{ section:"Sea Routes", key:"showRoutes", label:"Show Routes", type:"check" },
-			{ section:"Sea Routes", key:"routeMaxDistanceKm", label:"Max Route Distance", type:"range", min:5, max:120, step:5 },
-			{ section:"Sea Routes", key:"routeDensity", label:"Route Density", type:"range", min:0, max:2, step:0.05 },
-			{ section:"Sea Routes", key:"routeHubBias", label:"Prefer Hubs", type:"range", min:0, max:1, step:0.05 },
-			{ section:"Sea Routes", key:"routeMinConnections", label:"Min Connections", type:"range", min:1, max:3, step:1 },
-			{ section:"Sea Routes", key:"routeMaxConnections", label:"Max Connections", type:"range", min:2, max:8, step:1 },
-			{ section:"Continental Borders", key:"contNorth", label:"North Border", type:"range", min:0, max:1, step:0.05, border:"north" },
-			{ section:"Continental Borders", key:"contNorthAttach", label:"Attach North", type:"check" },
-			{ section:"Continental Borders", key:"contNorthMountain", label:"North Mountains", type:"range", min:0, max:1, step:0.05 },
-			{ section:"Continental Borders", key:"contNorthSteepness", label:"North Steepness", type:"range", min:0, max:1, step:0.05 },
-			{ section:"Continental Borders", key:"contSouth", label:"South Border", type:"range", min:0, max:1, step:0.05, border:"south" },
-			{ section:"Continental Borders", key:"contSouthAttach", label:"Attach South", type:"check" },
-			{ section:"Continental Borders", key:"contSouthMountain", label:"South Mountains", type:"range", min:0, max:1, step:0.05 },
-			{ section:"Continental Borders", key:"contSouthSteepness", label:"South Steepness", type:"range", min:0, max:1, step:0.05 },
-			{ section:"Continental Borders", key:"contEast", label:"East Border", type:"range", min:0, max:1, step:0.05, border:"east" },
-			{ section:"Continental Borders", key:"contEastAttach", label:"Attach East", type:"check" },
-			{ section:"Continental Borders", key:"contEastMountain", label:"East Mountains", type:"range", min:0, max:1, step:0.05 },
-			{ section:"Continental Borders", key:"contEastSteepness", label:"East Steepness", type:"range", min:0, max:1, step:0.05 },
-			{ section:"Continental Borders", key:"contWest", label:"West Border", type:"range", min:0, max:1, step:0.05, border:"west" },
-			{ section:"Continental Borders", key:"contWestAttach", label:"Attach West", type:"check" },
-			{ section:"Continental Borders", key:"contWestMountain", label:"West Mountains", type:"range", min:0, max:1, step:0.05 },
-			{ section:"Continental Borders", key:"contWestSteepness", label:"West Steepness", type:"range", min:0, max:1, step:0.05 },
-			{ section:"Smoothing", key:"smoothTerrain", label:"Terrain Smoothing", type:"check" },
-			{ section:"Smoothing", key:"smoothTerrainStrength", label:"Smoothing Strength", type:"range", min:1, max:10, step:1 },
-			{ section:"Smoothing", key:"blurElevation", label:"Elevation Blur", type:"check" },
-			{ section:"Smoothing", key:"blurElevationStrength", label:"Blur Strength", type:"range", min:1, max:5, step:1 },
-			{ section:"Rendering", key:"enableShadows", label:"Enable Shadows", type:"check" },
-			{ section:"Rendering", key:"ditherShadows", label:"Dither Shadows", type:"check" },
-			{ section:"Rendering", key:"shadowIntensity", label:"Shadow Intensity", type:"range", min:0, max:2, step:0.1 },
-			{ section:"Rendering", key:"shadowAlpha", label:"Shadow Alpha", type:"range", min:0, max:1, step:0.05 },
-			{ section:"Rendering", key:"lightAngleDeg", label:"Light Angle", type:"range", min:0, max:360, step:5 },
-			{ section:"Rendering", key:"saturation", label:"Saturation", type:"range", min:0, max:2, step:0.1 },
-			{ section:"Rendering", key:"sepia", label:"Sepia", type:"range", min:0, max:1, step:0.05 },
-			{ section:"Rendering", key:"vignette", label:"Vignette", type:"range", min:0, max:1, step:0.05 },
-			{ section:"Rendering", key:"scanlines", label:"CRT Effect", type:"range", min:0, max:0.5, step:0.05 },
-			{ section:"Rendering", key:"showClouds", label:"Show Clouds", type:"check" },
-			{ section:"Rendering", key:"showHeightMap", label:"Show Height Map", type:"check" },
-			{ section:"Rendering", key:"showCartographicLines", label:"Cartographic Lines", type:"check" },
-			{ section:"Rendering", key:"cloudDensity", label:"Cloud Density", type:"range", min:0.1, max:2, step:0.1 },
-			{ section:"Rendering", key:"windSpeed", label:"Wind Speed", type:"range", min:0.1, max:3, step:0.1 },
+			{
+				section: "General",
+				key: "worldId",
+				label: "World ID",
+				type: "text"
+			},
+			{
+				section: "General",
+				key: "worldName",
+				label: "World Name",
+				type: "text"
+			},
+			{
+				section: "General",
+				key: "seed",
+				label: "Seed",
+				type: "text"
+			},
+			{
+				section: "General",
+				key: "resolution",
+				label: "Map Resolution",
+				type: "range",
+				min: 128,
+				max: 1536,
+				step: 32,
+				tip: "Width; height uses golden ratio."
+			},
+			{
+				section: "Island Layout",
+				key: "clusters",
+				label: "Clusters",
+				type: "range",
+				min: 1,
+				max: 10,
+				step: 1
+			},
+			{
+				section: "Island Layout",
+				key: "largeIslands",
+				label: "Large Landmasses",
+				type: "range",
+				min: 0,
+				max: 4,
+				step: 1
+			},
+			{
+				section: "Island Layout",
+				key: "medIslands",
+				label: "Medium Islands",
+				type: "range",
+				min: 0,
+				max: 15,
+				step: 1
+			},
+			{
+				section: "Island Layout",
+				key: "smallIslands",
+				label: "Small Islands",
+				type: "range",
+				min: 10,
+				max: 100,
+				step: 1
+			},
+			{
+				section: "Island Layout",
+				key: "caribbeanness",
+				label: "Caribbeanness",
+				type: "range",
+				min: 0,
+				max: 1,
+				step: 0.05
+			},
+			{
+				section: "Terrain",
+				key: "seaLevel",
+				label: "Sea Level",
+				type: "range",
+				min: 0.1,
+				max: 0.9,
+				step: 0.05
+			},
+			{
+				section: "Terrain",
+				key: "coastIrregularity",
+				label: "Coast Irregularity",
+				type: "range",
+				min: 0,
+				max: 1,
+				step: 0.05
+			},
+			{
+				section: "Terrain",
+				key: "forestDensity",
+				label: "Forest Density",
+				type: "range",
+				min: 0,
+				max: 1,
+				step: 0.05
+			},
+			{
+				section: "Terrain",
+				key: "mountainIntensity",
+				label: "Mountain Coverage",
+				type: "range",
+				min: 0,
+				max: 1,
+				step: 0.05
+			},
+			{
+				section: "Terrain",
+				key: "mountainSteepness",
+				label: "Mountain Steepness",
+				type: "range",
+				min: 0,
+				max: 1,
+				step: 0.05
+			},
+			{
+				section: "Terrain",
+				key: "beachWidth",
+				label: "Beach Width",
+				type: "range",
+				min: 0,
+				max: 0.2,
+				step: 0.01
+			},
+			{
+				section: "Terrain",
+				key: "reefFreq",
+				label: "Reef Frequency",
+				type: "range",
+				min: 0,
+				max: 1,
+				step: 0.05
+			},
+			{
+				section: "Streams",
+				key: "enableStreams",
+				label: "Generate Streams",
+				type: "check"
+			},
+			{
+				section: "Streams",
+				key: "showStreams",
+				label: "Show Streams",
+				type: "check"
+			},
+			{
+				section: "Streams",
+				key: "streamCount",
+				label: "Stream Count",
+				type: "range",
+				min: 0,
+				max: 16,
+				step: 1
+			},
+			{
+				section: "Streams",
+				key: "streamMeander",
+				label: "Stream Meander",
+				type: "range",
+				min: 0,
+				max: 1,
+				step: 0.05
+			},
+			{
+				section: "Streams",
+				key: "streamTributaries",
+				label: "Tributaries",
+				type: "range",
+				min: 0,
+				max: 3,
+				step: 1
+			},
+			{
+				section: "Streams",
+				key: "streamSourceBias",
+				label: "Edge Source Bias",
+				type: "range",
+				min: 0,
+				max: 1,
+				step: 0.05
+			},
+			{
+				section: "Cities and POI",
+				key: "enableSettlements",
+				label: "Generate Cities",
+				type: "check"
+			},
+			{
+				section: "Cities and POI",
+				key: "enablePointsOfInterest",
+				label: "Generate POI",
+				type: "check"
+			},
+			{
+				section: "Cities and POI",
+				key: "showSettlements",
+				label: "Show Cities",
+				type: "check"
+			},
+			{
+				section: "Cities and POI",
+				key: "showPointsOfInterest",
+				label: "Show POI",
+				type: "check"
+			},
+			{
+				section: "Cities and POI",
+				key: "kmPerTile",
+				label: "Km Per Tile",
+				type: "range",
+				min: 0.1,
+				max: 2,
+				step: 0.1
+			},
+			{
+				section: "Cities and POI",
+				key: "coastalLocationMinDistanceKm",
+				label: "Min Location Distance",
+				type: "range",
+				min: 0.5,
+				max: 20,
+				step: 0.5
+			},
+			{
+				section: "Cities and POI",
+				key: "cityDensity",
+				label: "City Density",
+				type: "range",
+				min: 0,
+				max: 2,
+				step: 0.05
+			},
+			{
+				section: "Cities and POI",
+				key: "poiDensity",
+				label: "POI Density",
+				type: "range",
+				min: 0,
+				max: 2,
+				step: 0.05
+			},
+			{
+				section: "Sea Routes",
+				key: "enableRoutes",
+				label: "Generate Routes",
+				type: "check"
+			},
+			{
+				section: "Sea Routes",
+				key: "showRoutes",
+				label: "Show Routes",
+				type: "check"
+			},
+			{
+				section: "Sea Routes",
+				key: "routeMaxDistanceKm",
+				label: "Max Route Distance",
+				type: "range",
+				min: 5,
+				max: 120,
+				step: 5
+			},
+			{
+				section: "Sea Routes",
+				key: "routeDensity",
+				label: "Route Density",
+				type: "range",
+				min: 0,
+				max: 2,
+				step: 0.05
+			},
+			{
+				section: "Sea Routes",
+				key: "routeHubBias",
+				label: "Prefer Hubs",
+				type: "range",
+				min: 0,
+				max: 1,
+				step: 0.05
+			},
+			{
+				section: "Sea Routes",
+				key: "routeMinConnections",
+				label: "Min Connections",
+				type: "range",
+				min: 1,
+				max: 3,
+				step: 1
+			},
+			{
+				section: "Sea Routes",
+				key: "routeMaxConnections",
+				label: "Max Connections",
+				type: "range",
+				min: 2,
+				max: 8,
+				step: 1
+			},
+			{
+				section: "Continental Borders",
+				key: "contNorth",
+				label: "North Border",
+				type: "range",
+				min: 0,
+				max: 1,
+				step: 0.05,
+				border: "north"
+			},
+			{
+				section: "Continental Borders",
+				key: "contNorthAttach",
+				label: "Attach North",
+				type: "check"
+			},
+			{
+				section: "Continental Borders",
+				key: "contNorthMountain",
+				label: "North Mountains",
+				type: "range",
+				min: 0,
+				max: 1,
+				step: 0.05
+			},
+			{
+				section: "Continental Borders",
+				key: "contNorthSteepness",
+				label: "North Steepness",
+				type: "range",
+				min: 0,
+				max: 1,
+				step: 0.05
+			},
+			{
+				section: "Continental Borders",
+				key: "contSouth",
+				label: "South Border",
+				type: "range",
+				min: 0,
+				max: 1,
+				step: 0.05,
+				border: "south"
+			},
+			{
+				section: "Continental Borders",
+				key: "contSouthAttach",
+				label: "Attach South",
+				type: "check"
+			},
+			{
+				section: "Continental Borders",
+				key: "contSouthMountain",
+				label: "South Mountains",
+				type: "range",
+				min: 0,
+				max: 1,
+				step: 0.05
+			},
+			{
+				section: "Continental Borders",
+				key: "contSouthSteepness",
+				label: "South Steepness",
+				type: "range",
+				min: 0,
+				max: 1,
+				step: 0.05
+			},
+			{
+				section: "Continental Borders",
+				key: "contEast",
+				label: "East Border",
+				type: "range",
+				min: 0,
+				max: 1,
+				step: 0.05,
+				border: "east"
+			},
+			{
+				section: "Continental Borders",
+				key: "contEastAttach",
+				label: "Attach East",
+				type: "check"
+			},
+			{
+				section: "Continental Borders",
+				key: "contEastMountain",
+				label: "East Mountains",
+				type: "range",
+				min: 0,
+				max: 1,
+				step: 0.05
+			},
+			{
+				section: "Continental Borders",
+				key: "contEastSteepness",
+				label: "East Steepness",
+				type: "range",
+				min: 0,
+				max: 1,
+				step: 0.05
+			},
+			{
+				section: "Continental Borders",
+				key: "contWest",
+				label: "West Border",
+				type: "range",
+				min: 0,
+				max: 1,
+				step: 0.05,
+				border: "west"
+			},
+			{
+				section: "Continental Borders",
+				key: "contWestAttach",
+				label: "Attach West",
+				type: "check"
+			},
+			{
+				section: "Continental Borders",
+				key: "contWestMountain",
+				label: "West Mountains",
+				type: "range",
+				min: 0,
+				max: 1,
+				step: 0.05
+			},
+			{
+				section: "Continental Borders",
+				key: "contWestSteepness",
+				label: "West Steepness",
+				type: "range",
+				min: 0,
+				max: 1,
+				step: 0.05
+			},
+			{
+				section: "Smoothing",
+				key: "smoothTerrain",
+				label: "Terrain Smoothing",
+				type: "check"
+			},
+			{
+				section: "Smoothing",
+				key: "smoothTerrainStrength",
+				label: "Smoothing Strength",
+				type: "range",
+				min: 1,
+				max: 10,
+				step: 1
+			},
+			{
+				section: "Smoothing",
+				key: "blurElevation",
+				label: "Elevation Blur",
+				type: "check"
+			},
+			{
+				section: "Smoothing",
+				key: "blurElevationStrength",
+				label: "Blur Strength",
+				type: "range",
+				min: 1,
+				max: 5,
+				step: 1
+			},
+			{
+				section: "Rendering",
+				key: "enableShadows",
+				label: "Enable Shadows",
+				type: "check"
+			},
+			{
+				section: "Rendering",
+				key: "ditherShadows",
+				label: "Dither Shadows",
+				type: "check"
+			},
+			{
+				section: "Rendering",
+				key: "shadowIntensity",
+				label: "Shadow Intensity",
+				type: "range",
+				min: 0,
+				max: 2,
+				step: 0.1
+			},
+			{
+				section: "Rendering",
+				key: "shadowAlpha",
+				label: "Shadow Alpha",
+				type: "range",
+				min: 0,
+				max: 1,
+				step: 0.05
+			},
+			{
+				section: "Rendering",
+				key: "lightAngleDeg",
+				label: "Light Angle",
+				type: "range",
+				min: 0,
+				max: 360,
+				step: 5
+			},
+			{
+				section: "Rendering",
+				key: "saturation",
+				label: "Saturation",
+				type: "range",
+				min: 0,
+				max: 2,
+				step: 0.1
+			},
+			{
+				section: "Rendering",
+				key: "sepia",
+				label: "Sepia",
+				type: "range",
+				min: 0,
+				max: 1,
+				step: 0.05
+			},
+			{
+				section: "Rendering",
+				key: "vignette",
+				label: "Vignette",
+				type: "range",
+				min: 0,
+				max: 1,
+				step: 0.05
+			},
+			{
+				section: "Rendering",
+				key: "scanlines",
+				label: "CRT Effect",
+				type: "range",
+				min: 0,
+				max: 0.5,
+				step: 0.05
+			},
+			{
+				section: "Rendering",
+				key: "showClouds",
+				label: "Show Clouds",
+				type: "check"
+			},
+			{
+				section: "Rendering",
+				key: "showHeightMap",
+				label: "Show Height Map",
+				type: "check"
+			},
+			{
+				section: "Rendering",
+				key: "showCartographicLines",
+				label: "Cartographic Lines",
+				type: "check"
+			},
+			{
+				section: "Rendering",
+				key: "cloudDensity",
+				label: "Cloud Density",
+				type: "range",
+				min: 0.1,
+				max: 2,
+				step: 0.1
+			},
+			{
+				section: "Rendering",
+				key: "windSpeed",
+				label: "Wind Speed",
+				type: "range",
+				min: 0.1,
+				max: 3,
+				step: 0.1
+			},
 		];
 	}
 }
