@@ -1,3 +1,15 @@
+<style>
+	#page.shipEditor .ladderPlacementMode .ladderModeBtn {
+		background-color: #1e2229 !important;
+		border: 1px solid #545d73 !important;
+		box-shadow: none !important;
+	}
+	#page.shipEditor .ladderPlacementMode .ladderModeBtn.active {
+		background-color: #e34d00 !important;
+		border-color: #ffcc00 !important;
+		color: #fff !important;
+	}
+</style>
 <div class="shipEditorWrapper">
 	<div class="topBar">
 		<button class="backHome"><span class="icon back"></span> Back</button>
@@ -55,6 +67,32 @@
 						<label>Max Cannons Per Side</label>
 						<input type="number" class="field maxCannons" value="3" min="0" max="20" />
 					</div>
+					<div class="formGroup">
+						<label>Max Mast Count</label>
+						<input type="number" class="field maxMastCount" value="1" min="1" max="8" step="1" />
+					</div>
+					<div class="formGroup">
+						<label>Max Sails Per Mast</label>
+						<input type="number" class="field maxSailsPerMast" value="1" min="1" max="8" step="1" />
+					</div>
+
+					<h3>Base Stats</h3>
+					<div class="formGroup">
+						<label>Hull HP</label>
+						<input type="number" class="field baseHullHp" value="1000" min="0" step="1" />
+					</div>
+					<div class="formGroup">
+						<label>Speed</label>
+						<input type="number" class="field baseSpeed" value="300" min="0" step="1" />
+					</div>
+					<div class="formGroup">
+						<label>Max Crew Capacity</label>
+						<input type="number" class="field baseMaxCrewCapacity" value="8" min="0" step="1" />
+					</div>
+					<div class="formGroup">
+						<label>Cargo Capacity</label>
+						<input type="number" class="field baseCargoCapacity" value="100" min="0" step="1" />
+					</div>
 
 					<h3>Assets</h3>
 					<div class="formGroup">
@@ -84,7 +122,7 @@
 			<div class="gridLayout">
 				<div class="gridControls">
 					<h3>Deck Grid Editor</h3>
-					<p>Click tiles to toggle them active/inactive. Right-click to set boarding point.</p>
+					<p>Click tiles to toggle them active/inactive.</p>
 					<h4 style="margin-top:10px">Deck Grid Dimensions</h4>
 					<div class="formGroup">
 						<label>Width</label>
@@ -137,7 +175,7 @@
 			<div class="cannonsLayout">
 				<div class="cannonsControls">
 					<h3>Cannon Slots</h3>
-					<p>Drag markers to position cannons on each direction.</p>
+					<p>Select a cannon marker, then click an active deck tile to place it.</p>
 					<p><span style="color:#4488ff">&#9679; Blue</span> = Left side &nbsp; <span
 							style="color:#ff4444">&#9679; Red</span> = Right side</p>
 					<div class="directionSwitcher"></div>
@@ -176,12 +214,20 @@
 					<h3>Ship Props</h3>
 					<p>Select a prop type, then position markers on the sprite.</p>
 					<div class="propTypeList">
-						<button class="propTypeBtn active" data-prop="boarding_points">Boarding Points</button>
+						<button class="propTypeBtn active" data-prop="ladder_slots">Boarding / Ladder Slots</button>
+						<button class="propTypeBtn" data-prop="masts">Masts</button>
 						<button class="propTypeBtn" data-prop="steering_wheel">Steering Wheel</button>
 					</div>
 					<!-- Boarding Points config -->
-					<div class="propConfig propConfig-boarding_points">
+					<div class="propConfig propConfig-ladder_slots">
 						<div class="directionSwitcher"></div>
+						<div style="margin-top:4px">
+							<label style="font-size:9pt; color:#aab; display:block; margin-bottom:6px;">Placement Mode</label>
+							<div class="ladderPlacementMode" style="display:flex; gap:4px;">
+								<button class="ladderModeBtn active" data-mode="deck" style="padding:4px 10px; font-size:9pt;">Ladder Deck</button>
+								<button class="ladderModeBtn" data-mode="board" style="padding:4px 10px; font-size:9pt;">Board Point</button>
+							</div>
+						</div>
 						<div class="propButtons"
 							style="display: flex !important; flex-direction: row !important; align-items: center !important; gap: 8px !important;">
 							<span class="propCountLabel" style="font-weight: bold; white-space: nowrap;">Count: </span>
@@ -189,7 +235,25 @@
 							<button class="addPropPoint" style="margin-left: 4px;"><span class="icon add"></span> +</button>
 							<button class="removePropPoint"><span class="icon delete"></span> -</button>
 						</div>
-						<p style="opacity:0.7; font-size:0.85em">Add/remove boarding points. Drag to reposition.</p>
+						<div style="margin-top:6px">
+							<label style="font-size:9pt; color:#aab; display:block; margin-bottom:4px;">Ladder Index</label>
+							<select class="ladderIndexSelect" style="width:100%; font-size:9pt; padding:3px 4px;"></select>
+						</div>
+						<p style="opacity:0.7; font-size:0.85em">Add/remove ladders in pairs. Deck tile is placed by clicking an active tile. Board point is dragged per direction.</p>
+						<div class="propInfo"></div>
+					</div>
+					<!-- Masts config -->
+					<div class="propConfig propConfig-masts" style="display:none">
+						<div class="directionSwitcher"></div>
+						<div style="margin-top:6px">
+							<label style="font-size:9pt; color:#aab; display:block; margin-bottom:4px;">Mast Count Configuration</label>
+							<select class="mastCountSelect" style="width:100%; font-size:9pt; padding:3px 4px;"></select>
+						</div>
+						<div style="margin-top:6px">
+							<label style="font-size:9pt; color:#aab; display:block; margin-bottom:4px;">Mast Index</label>
+							<select class="mastIndexSelect" style="width:100%; font-size:9pt; padding:3px 4px;"></select>
+						</div>
+						<p style="opacity:0.7; font-size:0.85em">Select a mast count variant and mast index, then click an active deck tile. Positions are shared across directions.</p>
 						<div class="propInfo"></div>
 					</div>
 					<!-- Steering Wheel config -->
@@ -211,7 +275,7 @@
 							<input type="number" class="wheelScaleInput" step="0.1" min="0.1" max="10" value="1.0" style="width:60px; font-size:9pt; padding:2px 4px;">
 						</div>
 						<p style="opacity:0.7; font-size:0.85em; margin-top:6px;">
-							Click a deck tile to place the wheel or helmsman.<br>
+							Click an active deck tile to place the wheel or helmsman.<br>
 							Position is shared across all directions.
 						</p>
 						<div class="propInfo"></div>

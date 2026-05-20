@@ -1,9 +1,10 @@
 package page;
 
 import data.ShipData;
+import data.ShipData.BoardPoint;
 import data.ShipData.CannonSlot;
-import data.ShipData.PropSlot;
 import data.ShipData.ShipDirection;
+import data.ShipData.TileSlot;
 import js.html.CanvasElement;
 import js.html.CanvasRenderingContext2D;
 import js.html.Image;
@@ -17,7 +18,6 @@ class ShipEditor extends Page {
 
 	// Sprite images per direction
 	var spriteImages:Map<String, Image> = new Map();
-	var spritesLoaded:Bool = false;
 	var spriteWidth:Int = 0;
 	var spriteHeight:Int = 0;
 	var assetScale:Float = 1.0;
@@ -38,9 +38,8 @@ class ShipEditor extends Page {
 	var dragStartY:Float = 0;
 	var dragOffsetStartX:Float = 0;
 	var dragOffsetStartY:Float = 0;
-	var dragCannonDir:Null<String> = null;
-	var dragCannonSide:Null<String> = null;
-	var dragCannonIdx:Int = -1;
+	var selectedCannonSide:Null<String> = null;
+	var selectedCannonIdx:Int = -1;
 
 	// Undo system
 	var undoStack:Array<{tab:String, snapshot:String}> = [];
@@ -53,14 +52,17 @@ class ShipEditor extends Page {
 	var showCannonHelperLines:Bool = false;
 
 	// Props state
-	var currentPropType:String = "boarding_points";
+	var currentPropType:String = "ladder_slots";
 	var showPropsGrid:Bool = false;
 	var showPropsHelperLines:Bool = false;
 	var savedPropsState:Null<String> = null;
 	var wheelImages:Map<String, Image> = new Map();
-	var wheelImagesLoaded:Bool = false;
 	var dragPropIdx:Int = -1;
 	var dragPropType:Null<String> = null;
+	var selectedLadderIdx:Int = -1;
+	var selectedMastCount:Int = 1;
+	var selectedMastIdx:Int = -1;
+	var ladderPlacementMode:String = "deck"; // "deck" or "board"
 	var wheelPlacementMode:String = "wheel"; // "wheel" or "helmsman"
 	var hoveredTileX:Int = -1;
 	var hoveredTileY:Int = -1;
@@ -82,7 +84,6 @@ class ShipEditor extends Page {
 		initPropsScreen();
 
 		// Check for recent ship file
-		var recentDir = App.ME.settings.getUiDir("ShipEditor", null);
 		var recentFile = App.ME.settings.getUiDir("ShipEditorFile", null);
 		if (recentFile != null && NT.fileExists(recentFile)) {
 			jPage.find(".openRecent").show();
@@ -134,6 +135,7 @@ class ShipEditor extends Page {
 				case "cannons":
 					renderCannonsCanvas();
 				case "props":
+					updatePropInfo();
 					renderPropsCanvas();
 				default:
 			}
@@ -355,7 +357,6 @@ class ShipEditor extends Page {
 		if (ship == null)
 			return;
 
-		spritesLoaded = false;
 		spriteImages = new Map();
 
 		// Update UI
@@ -379,6 +380,10 @@ class ShipEditor extends Page {
 		// Restore asset scale from ship data
 		if (ship.assetScale > 0)
 			assetScale = ship.assetScale;
+
+		ship.ensureMastSlotConfigurations();
+		selectedMastCount = ship.maxMastCount;
+		selectedMastIdx = selectedMastCount > 0 ? 0 : -1;
 
 		populateParamsForm();
 
@@ -460,7 +465,6 @@ class ShipEditor extends Page {
 			var d:String = dir;
 			var suffix = dir.toFileSuffix();
 			var path = basePath + "/" + assetPrefix + "_" + suffix + ".png";
-			trace("Path for $d: " + path);
 			if (NT.fileExists(path)) {
 				var img = new Image();
 				var dirKey = d;
@@ -487,7 +491,6 @@ class ShipEditor extends Page {
 	}
 
 	function onSpritesLoaded() {
-		spritesLoaded = true;
 		// Capture sprite dimensions from first loaded image
 		for (dir in ShipDirection.all()) {
 			var d:String = dir;
@@ -529,7 +532,7 @@ class ShipEditor extends Page {
 		});
 
 		// Form field change handlers
-		for (cls in ["shipType", "maxCannons"]) {
+		for (cls in ["shipType", "maxCannons", "maxMastCount", "maxSailsPerMast", "baseHullHp", "baseSpeed", "baseMaxCrewCapacity", "baseCargoCapacity"]) {
 			jPage.find('.field.$cls').on("change", (_) -> {
 				readParamsForm();
 			});
@@ -568,6 +571,12 @@ class ShipEditor extends Page {
 			return;
 		jPage.find(".field.shipType").val(ship.shipType);
 		jPage.find(".field.maxCannons").val(Std.string(ship.maxCannonsPerSide));
+		jPage.find(".field.maxMastCount").val(Std.string(ship.maxMastCount));
+		jPage.find(".field.maxSailsPerMast").val(Std.string(ship.maxSailsPerMast));
+		jPage.find(".field.baseHullHp").val(Std.string(ship.baseStats.hullHp));
+		jPage.find(".field.baseSpeed").val(Std.string(ship.baseStats.speed));
+		jPage.find(".field.baseMaxCrewCapacity").val(Std.string(ship.baseStats.maxCrewCapacity));
+		jPage.find(".field.baseCargoCapacity").val(Std.string(ship.baseStats.cargoCapacity));
 		jPage.find(".field.gridWidth").val(Std.string(ship.deckGrid.width));
 		jPage.find(".field.gridHeight").val(Std.string(ship.deckGrid.height));
 		jPage.find(".field.tileSize").val(Std.string(ship.deckGrid.tile_size));
@@ -583,6 +592,48 @@ class ShipEditor extends Page {
 		var mc = Std.parseInt(jPage.find(".field.maxCannons").val());
 		if (mc != null)
 			ship.maxCannonsPerSide = mc;
+		var mastCountChanged = false;
+		var maxMastCount = Std.parseInt(jPage.find(".field.maxMastCount").val());
+		if (maxMastCount != null && maxMastCount > 0 && maxMastCount != ship.maxMastCount) {
+			ship.maxMastCount = maxMastCount;
+			mastCountChanged = true;
+		}
+		var maxSailsPerMast = Std.parseInt(jPage.find(".field.maxSailsPerMast").val());
+		var maxSailsChanged = false;
+		if (maxSailsPerMast != null && maxSailsPerMast > 0 && maxSailsPerMast != ship.maxSailsPerMast) {
+			ship.maxSailsPerMast = maxSailsPerMast;
+			maxSailsChanged = true;
+		}
+		if (mastCountChanged) {
+			ship.ensureMastSlotConfigurations();
+			if (selectedMastCount > ship.maxMastCount)
+				selectedMastCount = ship.maxMastCount;
+			if (selectedMastCount < 1)
+				selectedMastCount = 1;
+			var config = ship.getMastSlotConfiguration(selectedMastCount);
+			if (selectedMastIdx >= config.slots.length)
+				selectedMastIdx = config.slots.length - 1;
+			if (selectedMastIdx < 0 && config.slots.length > 0)
+				selectedMastIdx = 0;
+			updatePropInfo();
+			if (currentTab == "props")
+				renderPropsCanvas();
+			updateDirtyIndicators();
+		} else if (maxSailsChanged && currentPropType == "masts") {
+			updatePropInfo();
+		}
+		var hullHp = Std.parseInt(jPage.find(".field.baseHullHp").val());
+		if (hullHp != null && hullHp >= 0)
+			ship.baseStats.hullHp = hullHp;
+		var speed = Std.parseFloat(jPage.find(".field.baseSpeed").val());
+		if (!Math.isNaN(speed) && speed >= 0)
+			ship.baseStats.speed = speed;
+		var maxCrewCapacity = Std.parseInt(jPage.find(".field.baseMaxCrewCapacity").val());
+		if (maxCrewCapacity != null && maxCrewCapacity >= 0)
+			ship.baseStats.maxCrewCapacity = maxCrewCapacity;
+		var cargoCapacity = Std.parseInt(jPage.find(".field.baseCargoCapacity").val());
+		if (cargoCapacity != null && cargoCapacity >= 0)
+			ship.baseStats.cargoCapacity = cargoCapacity;
 		var gw = Std.parseInt(jPage.find(".field.gridWidth").val());
 		if (gw != null && gw > 0)
 			ship.deckGrid.width = gw;
@@ -655,8 +706,7 @@ class ShipEditor extends Page {
 		if (ship == null)
 			return "{}";
 		return haxe.Json.stringify({
-			deck_tiles: ship.deckGrid.deck_tiles.map((t) -> [t[0], t[1]]),
-			boarding_point: {x: ship.deckGrid.boarding_point.x, y: ship.deckGrid.boarding_point.y}
+			deck_tiles: ship.deckGrid.deck_tiles.map((t) -> [t[0], t[1]])
 		});
 	}
 
@@ -675,15 +725,10 @@ class ShipEditor extends Page {
 	function captureCannonsState():String {
 		if (ship == null)
 			return "{}";
-		var obj:haxe.DynamicAccess<Dynamic> = {};
-		for (dir in ShipDirection.all()) {
-			var d:String = dir;
-			var slots = ship.getCannonSlots(dir);
-			var leftArr:Array<Dynamic> = [for (s in slots.left) {x: s.x, y: s.y}];
-			var rightArr:Array<Dynamic> = [for (s in slots.right) {x: s.x, y: s.y}];
-			obj.set(d, {left: leftArr, right: rightArr});
-		}
-		return haxe.Json.stringify({slots: obj, maxCannonsPerSide: ship.maxCannonsPerSide});
+		var slots = ship.getCannonSlots(currentDirection);
+		var leftArr:Array<Dynamic> = [for (s in slots.left) {tx: s.tx, ty: s.ty}];
+		var rightArr:Array<Dynamic> = [for (s in slots.right) {tx: s.tx, ty: s.ty}];
+		return haxe.Json.stringify({left: leftArr, right: rightArr, maxCannonsPerSide: ship.maxCannonsPerSide});
 	}
 
 	function restoreGridState(json:String) {
@@ -698,7 +743,6 @@ class ShipEditor extends Page {
 					[Std.int(arr[0]), Std.int(arr[1])];
 				}
 			];
-			ship.deckGrid.boarding_point = {x: Std.int(obj.boarding_point.x), y: Std.int(obj.boarding_point.y)};
 		} catch (_) {}
 	}
 
@@ -724,18 +768,11 @@ class ShipEditor extends Page {
 			return;
 		try {
 			var obj:Dynamic = haxe.Json.parse(json);
-			var slotsObj:haxe.DynamicAccess<Dynamic> = obj.slots;
-			for (dir in ShipDirection.all()) {
-				var d:String = dir;
-				var data:Dynamic = slotsObj.get(d);
-				if (data != null) {
-					var slots = ship.getCannonSlots(dir);
-					var leftArr:Array<Dynamic> = data.left;
-					var rightArr:Array<Dynamic> = data.right;
-					slots.left = [for (s in leftArr) {x: Std.int(s.x), y: Std.int(s.y)}];
-					slots.right = [for (s in rightArr) {x: Std.int(s.x), y: Std.int(s.y)}];
-				}
-			}
+			var slots = ship.getCannonSlots(currentDirection);
+			var leftArr:Array<Dynamic> = obj.left;
+			var rightArr:Array<Dynamic> = obj.right;
+			slots.left = [for (s in leftArr) {tx: Std.int(s.tx), ty: Std.int(s.ty)}];
+			slots.right = [for (s in rightArr) {tx: Std.int(s.tx), ty: Std.int(s.ty)}];
 			ship.maxCannonsPerSide = Std.int(obj.maxCannonsPerSide);
 		} catch (_) {}
 	}
@@ -896,22 +933,6 @@ class ShipEditor extends Page {
 
 		canvas.addEventListener("contextmenu", (ev:js.html.MouseEvent) -> {
 			ev.preventDefault();
-			if (ship == null)
-				return;
-			var rect = canvas.getBoundingClientRect();
-			var mx = screenToWorldX(ev.clientX - rect.left, canvas.width);
-			var my = screenToWorldY(ev.clientY - rect.top, canvas.height);
-			var tileSize = getTileDrawSize();
-			var offsetX = getGridOffsetX(canvas, tileSize);
-			var offsetY = getGridOffsetY(canvas, tileSize);
-			var tx = Math.floor((mx - offsetX) / tileSize);
-			var ty = Math.floor((my - offsetY) / tileSize);
-			if (tx >= 0 && tx < ship.deckGrid.width && ty >= 0 && ty < ship.deckGrid.height) {
-				pushUndo("grid");
-				ship.deckGrid.boarding_point = {x: tx, y: ty};
-				renderDeckGrid();
-				updateDirtyIndicators();
-			}
 		});
 	}
 
@@ -959,25 +980,16 @@ class ShipEditor extends Page {
 				var x = offsetX + tx * tileSize;
 				var y = offsetY + ty * tileSize;
 				var active = ship.isDeckTileActive(tx, ty);
-				var isBP = ship.deckGrid.boarding_point.x == tx && ship.deckGrid.boarding_point.y == ty;
 
 				if (active)
-					ctx.fillStyle = isBP ? "#44aa44" : "#5577bb";
+					ctx.fillStyle = "#5577bb";
 				else
-					ctx.fillStyle = isBP ? "#336633" : "#222233";
+					ctx.fillStyle = "#222233";
 
 				ctx.fillRect(x + 1, y + 1, tileSize - 2, tileSize - 2);
 				ctx.strokeStyle = "#556677";
 				ctx.lineWidth = 1;
 				ctx.strokeRect(x + 0.5, y + 0.5, tileSize - 1, tileSize - 1);
-
-				if (isBP) {
-					ctx.fillStyle = "#ffffff";
-					ctx.font = Std.string(Math.round(tileSize * 0.4)) + "px sans-serif";
-					ctx.textAlign = "center";
-					ctx.textBaseline = "middle";
-					ctx.fillText("B", x + tileSize / 2, y + tileSize / 2);
-				}
 			}
 		}
 
@@ -986,8 +998,7 @@ class ShipEditor extends Page {
 		// Update info
 		jPage.find(".gridInfo")
 			.html('Grid: ${ship.deckGrid.width}x${ship.deckGrid.height}, Tile: ${ship.deckGrid.tile_size}px, '
-				+ 'Active tiles: ${ship.deckGrid.deck_tiles.length}, '
-				+ 'Boarding: (${ship.deckGrid.boarding_point.x}, ${ship.deckGrid.boarding_point.y})');
+				+ 'Active tiles: ${ship.deckGrid.deck_tiles.length}');
 	}
 
 	// =========================================================================
@@ -1133,6 +1144,74 @@ class ShipEditor extends Page {
 		return {tx: Std.int(Math.floor(tileX)), ty: Std.int(Math.floor(tileY))};
 	}
 
+	function canvasPointToTile(canvas:CanvasElement, mx:Float, my:Float, dir:ShipDirection):TileSlot {
+		if (ship == null)
+			return {tx: -1, ty: -1};
+		var spriteCX = canvas.width / 2;
+		var spriteCY = canvas.height / 2;
+		var off = ship.getVisualOffset(dir);
+		var relX = mx - spriteCX - off.x;
+		var relY = my - spriteCY + off.y;
+		return screenToTile(relX, relY, dir);
+	}
+
+	function isActiveTile(tile:TileSlot):Bool {
+		return ship != null
+			&& tile.tx >= 0
+			&& tile.tx < ship.deckGrid.width
+			&& tile.ty >= 0
+			&& tile.ty < ship.deckGrid.height
+			&& ship.isDeckTileActive(tile.tx, tile.ty);
+	}
+
+	function firstActiveTile():TileSlot {
+		if (ship == null || ship.deckGrid.deck_tiles.length == 0)
+			return {tx: 0, ty: 0};
+		var t = ship.deckGrid.deck_tiles[0];
+		return {tx: t[0], ty: t[1]};
+	}
+
+	function defaultTileForSide(side:String):TileSlot {
+		if (ship == null || ship.deckGrid.deck_tiles.length == 0)
+			return {tx: 0, ty: 0};
+		var minX = 999999;
+		var maxX = -999999;
+		for (t in ship.deckGrid.deck_tiles) {
+			if (t[0] < minX)
+				minX = t[0];
+			if (t[0] > maxX)
+				maxX = t[0];
+		}
+		var targetX = side == "right" ? maxX : minX;
+		var best:Null<TileSlot> = null;
+		for (t in ship.deckGrid.deck_tiles) {
+			if (t[0] == targetX && (best == null || t[1] < best.ty))
+				best = {tx: t[0], ty: t[1]};
+		}
+		return best != null ? best : firstActiveTile();
+	}
+
+	function updateHoveredTileForCanvas(canvas:CanvasElement, mx:Float, my:Float, dir:ShipDirection) {
+		var tile = canvasPointToTile(canvas, mx, my, dir);
+		if (!isActiveTile(tile))
+			tile = {tx: -1, ty: -1};
+		if (tile.tx != hoveredTileX || tile.ty != hoveredTileY) {
+			hoveredTileX = tile.tx;
+			hoveredTileY = tile.ty;
+			renderCurrentCanvas();
+		}
+	}
+
+	function renderCurrentCanvas() {
+		switch currentTab {
+			case "cannons":
+				renderCannonsCanvas();
+			case "props":
+				renderPropsCanvas();
+			default:
+		}
+	}
+
 	function drawIsoGrid(ctx:CanvasRenderingContext2D, cx:Float, cy:Float, dir:ShipDirection, alphaMultiplier:Float = 1.0) {
 		if (ship == null)
 			return;
@@ -1145,42 +1224,38 @@ class ShipEditor extends Page {
 		ctx.strokeStyle = "rgba(0, 255, 100, " + gridAlpha + ")";
 		ctx.lineWidth = 1;
 
-		for (ty in 0...ship.deckGrid.height) {
-			for (tx in 0...ship.deckGrid.width) {
-				var tileCX = tx + 0.5;
-				var tileCY = ty + 0.5;
-				var center = tileToScreen(tileCX, tileCY, dir);
+		for (tile in ship.deckGrid.deck_tiles) {
+			var tx = tile[0];
+			var ty = tile[1];
+			var tileCX = tx + 0.5;
+			var tileCY = ty + 0.5;
+			var center = tileToScreen(tileCX, tileCY, dir);
 
-				// 4 corners of the tile in virtual space (relative to tile center)
-				var corners = [
-					{x: -half, y: -half},
-					{x: half, y: -half},
-					{x: half, y: half},
-					{x: -half, y: half}
-				];
+			// 4 corners of the tile in virtual space (relative to tile center)
+			var corners = [
+				{x: -half, y: -half},
+				{x: half, y: -half},
+				{x: half, y: half},
+				{x: -half, y: half}
+			];
 
-				ctx.beginPath();
-				for (i in 0...4) {
-					var vx = corners[i].x;
-					var vy = corners[i].y;
-					var rx = vx * rot.cos - vy * rot.sin;
-					var ry = (vx * rot.sin + vy * rot.cos) * ISO_Y_SCALE;
-					var sx = cx + center.x + rx;
-					var sy = cy + center.y + ry;
-					if (i == 0)
-						ctx.moveTo(sx, sy);
-					else
-						ctx.lineTo(sx, sy);
-				}
-				ctx.closePath();
-
-				// Fill active tiles
-				if (ship.isDeckTileActive(tx, ty)) {
-					ctx.fillStyle = "rgba(0, 200, 100, " + fillAlpha + ")";
-					ctx.fill();
-				}
-				ctx.stroke();
+			ctx.beginPath();
+			for (i in 0...4) {
+				var vx = corners[i].x;
+				var vy = corners[i].y;
+				var rx = vx * rot.cos - vy * rot.sin;
+				var ry = (vx * rot.sin + vy * rot.cos) * ISO_Y_SCALE;
+				var sx = cx + center.x + rx;
+				var sy = cy + center.y + ry;
+				if (i == 0)
+					ctx.moveTo(sx, sy);
+				else
+					ctx.lineTo(sx, sy);
 			}
+			ctx.closePath();
+			ctx.fillStyle = "rgba(0, 200, 100, " + fillAlpha + ")";
+			ctx.fill();
+			ctx.stroke();
 		}
 	}
 
@@ -1205,8 +1280,12 @@ class ShipEditor extends Page {
 				return;
 			pushUndo("cannons");
 			var slots = ship.getCannonSlots(currentDirection);
-			slots.left.push({x: -20, y: 0});
-			slots.right.push({x: 20, y: 0});
+			var leftDefault = defaultTileForSide("left");
+			var rightDefault = defaultTileForSide("right");
+			slots.left.push({tx: leftDefault.tx, ty: leftDefault.ty});
+			slots.right.push({tx: rightDefault.tx, ty: rightDefault.ty});
+			selectedCannonSide = "left";
+			selectedCannonIdx = slots.left.length - 1;
 			ship.maxCannonsPerSide = Std.int(Math.max(slots.left.length, slots.right.length));
 			updateCannonInfo();
 			renderCannonsCanvas();
@@ -1222,6 +1301,12 @@ class ShipEditor extends Page {
 				slots.left.pop();
 			if (slots.right.length > 0)
 				slots.right.pop();
+			if (selectedCannonSide == "left" && selectedCannonIdx >= slots.left.length)
+				selectedCannonIdx = slots.left.length - 1;
+			if (selectedCannonSide == "right" && selectedCannonIdx >= slots.right.length)
+				selectedCannonIdx = slots.right.length - 1;
+			if (selectedCannonIdx < 0)
+				selectedCannonSide = null;
 			ship.maxCannonsPerSide = Std.int(Math.max(slots.left.length, slots.right.length));
 			if (ship.maxCannonsPerSide < 0)
 				ship.maxCannonsPerSide = 0;
@@ -1244,75 +1329,57 @@ class ShipEditor extends Page {
 			var spriteCX = canvas.width / 2;
 			var spriteCY = canvas.height / 2;
 
-			// Find closest cannon marker
 			var slots = ship.getCannonSlots(currentDirection);
-			var bestDist = 15.0 / canvasZoom;
-
-			for (i in 0...slots.left.length) {
-				var s = slots.left[i];
-				var dx = (spriteCX + s.x) - mx;
-				var dy = (spriteCY - s.y) - my;
-				var dist = Math.sqrt(dx * dx + dy * dy);
-				if (dist < bestDist) {
-					bestDist = dist;
-					isDragging = true;
-					dragCannonSide = "left";
-					dragCannonIdx = i;
-					dragStartX = mx;
-					dragStartY = my;
-					dragOffsetStartX = s.x;
-					dragOffsetStartY = s.y;
+			var leftIdx = findTileSlotMarkerAt(mx, my, spriteCX, spriteCY, cast slots.left, currentDirection);
+			var rightIdx = findTileSlotMarkerAt(mx, my, spriteCX, spriteCY, cast slots.right, currentDirection);
+			if (leftIdx >= 0 || rightIdx >= 0) {
+				if (rightIdx < 0 || leftIdx >= 0) {
+					selectedCannonSide = "left";
+					selectedCannonIdx = leftIdx;
+				} else {
+					selectedCannonSide = "right";
+					selectedCannonIdx = rightIdx;
 				}
+				updateCannonInfo();
+				renderCannonsCanvas();
+				return;
 			}
 
-			for (i in 0...slots.right.length) {
-				var s = slots.right[i];
-				var dx = (spriteCX + s.x) - mx;
-				var dy = (spriteCY - s.y) - my;
-				var dist = Math.sqrt(dx * dx + dy * dy);
-				if (dist < bestDist) {
-					bestDist = dist;
-					isDragging = true;
-					dragCannonSide = "right";
-					dragCannonIdx = i;
-					dragStartX = mx;
-					dragStartY = my;
-					dragOffsetStartX = s.x;
-					dragOffsetStartY = s.y;
+			var tile = canvasPointToTile(canvas, mx, my, currentDirection);
+			if (isActiveTile(tile) && selectedCannonSide != null && selectedCannonIdx >= 0) {
+				var arr = selectedCannonSide == "left" ? slots.left : slots.right;
+				if (selectedCannonIdx < arr.length) {
+					pushUndo("cannons");
+					arr[selectedCannonIdx].tx = tile.tx;
+					arr[selectedCannonIdx].ty = tile.ty;
+					updateCannonInfo();
+					renderCannonsCanvas();
+					updateDirtyIndicators();
 				}
 			}
 		});
 
 		canvas.addEventListener("mousemove", (ev:js.html.MouseEvent) -> {
-			if (!isDragging || ship == null || dragCannonSide == null)
+			if (ship == null)
 				return;
 			var rect = canvas.getBoundingClientRect();
 			var mx = screenToWorldX(ev.clientX - rect.left, canvas.width);
 			var my = screenToWorldY(ev.clientY - rect.top, canvas.height);
-			var dx = mx - dragStartX;
-			var dy = my - dragStartY;
-
-			var slots = ship.getCannonSlots(currentDirection);
-			var arr = dragCannonSide == "left" ? slots.left : slots.right;
-			if (dragCannonIdx >= 0 && dragCannonIdx < arr.length) {
-				arr[dragCannonIdx].x = Std.int(dragOffsetStartX + dx);
-				arr[dragCannonIdx].y = Std.int(dragOffsetStartY - dy);
-				updateCannonInfo();
-				renderCannonsCanvas();
-			}
+			updateHoveredTileForCanvas(canvas, mx, my, currentDirection);
 		});
 
 		canvas.addEventListener("mouseup", (_) -> {
 			isDragging = false;
-			dragCannonSide = null;
-			dragCannonIdx = -1;
 			updateDirtyIndicators();
 		});
 
 		canvas.addEventListener("mouseleave", (_) -> {
 			isDragging = false;
-			dragCannonSide = null;
-			dragCannonIdx = -1;
+			if (hoveredTileX != -1 || hoveredTileY != -1) {
+				hoveredTileX = -1;
+				hoveredTileY = -1;
+				renderCannonsCanvas();
+			}
 		});
 	}
 
@@ -1322,7 +1389,8 @@ class ShipEditor extends Page {
 		var slots = ship.getCannonSlots(currentDirection);
 		var d:String = currentDirection;
 		jPage.find(".cannonCount").text(Std.string(ship.maxCannonsPerSide));
-		jPage.find(".cannonInfo").html('Direction: $d | Left: ${slots.left.length} | Right: ${slots.right.length} | Max per side: ${ship.maxCannonsPerSide}');
+		var selected = selectedCannonSide != null && selectedCannonIdx >= 0 ? ' | Selected: ${selectedCannonSide} ${selectedCannonIdx + 1}' : "";
+		jPage.find(".cannonInfo").html('Preview: $d | Left: ${slots.left.length} | Right: ${slots.right.length} | Max per side: ${ship.maxCannonsPerSide}$selected');
 	}
 
 	function renderCannonsCanvas() {
@@ -1380,27 +1448,35 @@ class ShipEditor extends Page {
 			drawHelperLines(ctx, spriteCX, spriteCY, canvas.width, canvas.height);
 		}
 
+		var off = ship.getVisualOffset(currentDirection);
+		var gridCX = spriteCX + off.x;
+		var gridCY = spriteCY - off.y;
+		if (hoveredTileX >= 0 && hoveredTileX < ship.deckGrid.width && hoveredTileY >= 0 && hoveredTileY < ship.deckGrid.height) {
+			drawTileHighlight(ctx, gridCX, gridCY, hoveredTileX, hoveredTileY, currentDirection, "rgba(255,200,50,0.25)");
+		}
+
 		// Draw cannon markers
 		var slots = ship.getCannonSlots(currentDirection);
-		drawCannonMarkers(ctx, spriteCX, spriteCY, slots.left, "#4488ff", "L");
-		drawCannonMarkers(ctx, spriteCX, spriteCY, slots.right, "#ff4444", "R");
+		drawCannonMarkers(ctx, spriteCX, spriteCY, slots.left, "#4488ff", "L", "left");
+		drawCannonMarkers(ctx, spriteCX, spriteCY, slots.right, "#ff4444", "R", "right");
 
 		ctx.restore();
 	}
 
-	function drawCannonMarkers(ctx:CanvasRenderingContext2D, cx:Float, cy:Float, slots:Array<CannonSlot>, color:String, label:String) {
+	function drawCannonMarkers(ctx:CanvasRenderingContext2D, cx:Float, cy:Float, slots:Array<CannonSlot>, color:String, label:String, side:String) {
 		var r = 6.0;
 		for (i in 0...slots.length) {
 			var s = slots[i];
-			var sx = cx + s.x;
-			var sy = cy - s.y;
+			var pos = tileSlotToCanvasPosition(cx, cy, s, currentDirection);
+			var sx = pos.x;
+			var sy = pos.y;
 
 			ctx.beginPath();
 			ctx.arc(sx, sy, r, 0, Math.PI * 2);
 			ctx.fillStyle = color;
 			ctx.fill();
 			ctx.strokeStyle = "#ffffff";
-			ctx.lineWidth = 1.5;
+			ctx.lineWidth = selectedCannonSide == side && selectedCannonIdx == i ? 3 : 1.5;
 			ctx.stroke();
 
 			ctx.fillStyle = "#ffffff";
@@ -1458,6 +1534,67 @@ class ShipEditor extends Page {
 		}
 	}
 
+	function tileSlotToCanvasPosition(cx:Float, cy:Float, slot:{tx:Int, ty:Int}, dir:ShipDirection):{x:Float, y:Float} {
+		if (ship == null)
+			return {x: cx, y: cy};
+		var off = ship.getVisualOffset(dir);
+		var screen = tileToScreen(slot.tx + 0.5, slot.ty + 0.5, dir);
+		return {
+			x: cx + off.x + screen.x,
+			y: cy - off.y + screen.y
+		};
+	}
+
+	function findTileSlotMarkerAt(mx:Float, my:Float, cx:Float, cy:Float, slots:Array<{tx:Int, ty:Int}>, dir:ShipDirection):Int {
+		var bestIdx = -1;
+		var bestDist = 12.0 / canvasZoom;
+		for (i in 0...slots.length) {
+			var pos = tileSlotToCanvasPosition(cx, cy, slots[i], dir);
+			var dx = pos.x - mx;
+			var dy = pos.y - my;
+			var dist = Math.sqrt(dx * dx + dy * dy);
+			if (dist < bestDist) {
+				bestDist = dist;
+				bestIdx = i;
+			}
+		}
+		return bestIdx;
+	}
+
+	function findLadderDeckMarkerAt(mx:Float, my:Float, cx:Float, cy:Float, slots:Array<TileSlot>, dir:ShipDirection):Int {
+		var bestIdx = -1;
+		var bestDist = 12.0 / canvasZoom;
+		for (i in 0...slots.length) {
+			var pos = tileSlotToCanvasPosition(cx, cy, slots[i], dir);
+			var dx = pos.x - mx;
+			var dy = pos.y - my;
+			var dist = Math.sqrt(dx * dx + dy * dy);
+			if (dist < bestDist) {
+				bestDist = dist;
+				bestIdx = i;
+			}
+		}
+		return bestIdx;
+	}
+
+	function findLadderBoardMarkerAt(mx:Float, my:Float, cx:Float, cy:Float, points:Array<BoardPoint>):Int {
+		var bestIdx = -1;
+		var bestDist = 14.0 / canvasZoom;
+		for (i in 0...points.length) {
+			var point = points[i];
+			var sx = cx + point.x;
+			var sy = cy - point.y;
+			var dx = sx - mx;
+			var dy = sy - my;
+			var dist = Math.sqrt(dx * dx + dy * dy);
+			if (dist < bestDist) {
+				bestDist = dist;
+				bestIdx = i;
+			}
+		}
+		return bestIdx;
+	}
+
 	// =========================================================================
 	// Props Screen
 	// =========================================================================
@@ -1482,6 +1619,47 @@ class ShipEditor extends Page {
 			renderPropsCanvas();
 		});
 
+		jPage.find(".ladderModeBtn").click((ev:js.jquery.Event) -> {
+			var jBtn = new J(ev.currentTarget);
+			var mode = jBtn.attr("data-mode");
+			if (mode != null) {
+				ladderPlacementMode = mode;
+				jPage.find(".ladderModeBtn").removeClass("active");
+				jBtn.addClass("active");
+				updatePropInfo();
+				renderPropsCanvas();
+			}
+		});
+
+		jPage.find(".ladderIndexSelect").on("change", (ev:js.jquery.Event) -> {
+			var val = Std.parseInt(new J(ev.currentTarget).val());
+			if (val != null) {
+				selectedLadderIdx = val;
+				updatePropInfo();
+				renderPropsCanvas();
+			}
+		});
+
+		jPage.find(".mastCountSelect").on("change", (ev:js.jquery.Event) -> {
+			var val = Std.parseInt(new J(ev.currentTarget).val());
+			if (ship != null && val != null) {
+				selectedMastCount = val;
+				var config = ship.getMastSlotConfiguration(selectedMastCount);
+				selectedMastIdx = config.slots.length > 0 ? 0 : -1;
+				updatePropInfo();
+				renderPropsCanvas();
+			}
+		});
+
+		jPage.find(".mastIndexSelect").on("change", (ev:js.jquery.Event) -> {
+			var val = Std.parseInt(new J(ev.currentTarget).val());
+			if (val != null) {
+				selectedMastIdx = val;
+				updatePropInfo();
+				renderPropsCanvas();
+			}
+		});
+
 		// Visual grid overlay toggle
 		jPage.find(".showPropsGrid").on("change", (_) -> {
 			showPropsGrid = jPage.find(".showPropsGrid").is(":checked");
@@ -1493,26 +1671,41 @@ class ShipEditor extends Page {
 			renderPropsCanvas();
 		});
 
-		// Boarding Points: Add
+		// Ladder slots: Add two points to keep an even slot count.
 		jPage.find(".addPropPoint").click((_) -> {
 			if (ship == null)
 				return;
 			pushUndo("props");
-			var bp = ship.getBoardingPoints(currentDirection);
-			bp.slots.push({x: 0, y: 20});
+			var slots = ship.getLadderDeckSlots();
+			var leftDefault = defaultTileForSide("left");
+			var rightDefault = defaultTileForSide("right");
+			ship.addLadderSlot(leftDefault);
+			ship.addLadderSlot(rightDefault);
+			selectedLadderIdx = slots.slots.length - 2;
 			updatePropInfo();
 			renderPropsCanvas();
 			updateDirtyIndicators();
 		});
 
-		// Boarding Points: Remove
+		// Ladder slots: Remove two points to keep an even slot count.
 		jPage.find(".removePropPoint").click((_) -> {
 			if (ship == null)
 				return;
 			pushUndo("props");
-			var bp = ship.getBoardingPoints(currentDirection);
-			if (bp.slots.length > 0)
-				bp.slots.pop();
+			var slots = ship.getLadderDeckSlots();
+			for (dir in ShipDirection.all()) {
+				var points = ship.getLadderBoardPoints(dir).slots;
+				if (points.length > 0)
+					points.pop();
+				if (points.length > 0)
+					points.pop();
+			}
+			if (slots.slots.length > 0)
+				slots.slots.pop();
+			if (slots.slots.length > 0)
+				slots.slots.pop();
+			if (selectedLadderIdx >= slots.slots.length)
+				selectedLadderIdx = slots.slots.length - 1;
 			updatePropInfo();
 			renderPropsCanvas();
 			updateDirtyIndicators();
@@ -1602,35 +1795,54 @@ class ShipEditor extends Page {
 			var spriteCX = canvas.width / 2;
 			var spriteCY = canvas.height / 2;
 
-			if (currentPropType == "boarding_points") {
-				// Drag-based for boarding points
-				var bestDist = 15.0 / canvasZoom;
-				var bp = ship.getBoardingPoints(currentDirection);
-				for (i in 0...bp.slots.length) {
-					var s = bp.slots[i];
-					var dx = (spriteCX + s.x) - mx;
-					var dy = (spriteCY - s.y) - my;
-					var dist = Math.sqrt(dx * dx + dy * dy);
-					if (dist < bestDist) {
-						bestDist = dist;
+			if (currentPropType == "ladder_slots") {
+				var deckSlots = ship.getLadderDeckSlots();
+				if (selectedLadderIdx < 0 && deckSlots.slots.length > 0)
+					selectedLadderIdx = 0;
+				if (ladderPlacementMode == "board") {
+					var boardPoints = ship.getLadderBoardPoints(currentDirection);
+					var boardIdx = findLadderBoardMarkerAt(mx, my, spriteCX, spriteCY, boardPoints.slots);
+					if (boardIdx >= 0) {
+						selectedLadderIdx = boardIdx;
+					}
+					if (selectedLadderIdx >= 0 && selectedLadderIdx < boardPoints.slots.length) {
 						pushUndo("props");
+						var point = ship.getLadderBoardPoint(selectedLadderIdx, currentDirection);
+						point.x = Std.int(mx - spriteCX);
+						point.y = Std.int(spriteCY - my);
 						isDragging = true;
-						dragPropType = "boarding_points";
-						dragPropIdx = i;
+						dragPropType = "ladder_board";
+						dragPropIdx = selectedLadderIdx;
 						dragStartX = mx;
 						dragStartY = my;
-						dragOffsetStartX = s.x;
-						dragOffsetStartY = s.y;
+						dragOffsetStartX = point.x;
+						dragOffsetStartY = point.y;
+						updatePropInfo();
+						renderPropsCanvas();
+						updateDirtyIndicators();
+					}
+				} else if (ladderPlacementMode == "deck") {
+					var markerIdx = findLadderDeckMarkerAt(mx, my, spriteCX, spriteCY, deckSlots.slots, currentDirection);
+					if (markerIdx >= 0) {
+						selectedLadderIdx = markerIdx;
+						updatePropInfo();
+						renderPropsCanvas();
+						return;
+					}
+					var tile = canvasPointToTile(canvas, mx, my, currentDirection);
+					if (isActiveTile(tile) && selectedLadderIdx >= 0 && selectedLadderIdx < deckSlots.slots.length) {
+						pushUndo("props");
+						deckSlots.slots[selectedLadderIdx].tx = tile.tx;
+						deckSlots.slots[selectedLadderIdx].ty = tile.ty;
+						updatePropInfo();
+						renderPropsCanvas();
+						updateDirtyIndicators();
 					}
 				}
 			} else if (currentPropType == "steering_wheel") {
 				// Click-to-place on tile for steering wheel / helmsman
-				var off = ship.getVisualOffset(currentDirection);
-				var relX = mx - spriteCX - off.x;
-				var relY = my - spriteCY + off.y;
-				var tile = screenToTile(relX, relY, currentDirection);
-				// Validate tile is within grid bounds
-				if (tile.tx >= 0 && tile.tx < ship.deckGrid.width && tile.ty >= 0 && tile.ty < ship.deckGrid.height) {
+				var tile = canvasPointToTile(canvas, mx, my, currentDirection);
+				if (isActiveTile(tile)) {
 					pushUndo("props");
 					if (wheelPlacementMode == "helmsman") {
 						ship.helmsmanTile.tx = tile.tx;
@@ -1639,6 +1851,26 @@ class ShipEditor extends Page {
 						ship.steeringWheelTile.tx = tile.tx;
 						ship.steeringWheelTile.ty = tile.ty;
 					}
+					updatePropInfo();
+					renderPropsCanvas();
+					updateDirtyIndicators();
+				}
+			} else if (currentPropType == "masts") {
+				var config = ship.getMastSlotConfiguration(selectedMastCount);
+				if (selectedMastIdx < 0 && config.slots.length > 0)
+					selectedMastIdx = 0;
+				var markerIdx = findTileSlotMarkerAt(mx, my, spriteCX, spriteCY, cast config.slots, currentDirection);
+				if (markerIdx >= 0) {
+					selectedMastIdx = markerIdx;
+					updatePropInfo();
+					renderPropsCanvas();
+					return;
+				}
+				var tile = canvasPointToTile(canvas, mx, my, currentDirection);
+				if (isActiveTile(tile) && selectedMastIdx >= 0 && selectedMastIdx < config.slots.length) {
+					pushUndo("props");
+					config.slots[selectedMastIdx].tx = tile.tx;
+					config.slots[selectedMastIdx].ty = tile.ty;
 					updatePropInfo();
 					renderPropsCanvas();
 					updateDirtyIndicators();
@@ -1653,29 +1885,19 @@ class ShipEditor extends Page {
 			var mx = screenToWorldX(ev.clientX - rect.left, canvas.width);
 			var my = screenToWorldY(ev.clientY - rect.top, canvas.height);
 
-			if (isDragging && dragPropType == "boarding_points") {
-				var dx = mx - dragStartX;
-				var dy = my - dragStartY;
-				var bp = ship.getBoardingPoints(currentDirection);
-				if (dragPropIdx >= 0 && dragPropIdx < bp.slots.length) {
-					bp.slots[dragPropIdx].x = Std.int(dragOffsetStartX + dx);
-					bp.slots[dragPropIdx].y = Std.int(dragOffsetStartY - dy);
+			if (isDragging && dragPropType == "ladder_board") {
+				var points = ship.getLadderBoardPoints(currentDirection).slots;
+				if (dragPropIdx >= 0 && dragPropIdx < points.length) {
+					var dx = mx - dragStartX;
+					var dy = my - dragStartY;
+					var point = points[dragPropIdx];
+					point.x = Std.int(dragOffsetStartX + dx);
+					point.y = Std.int(dragOffsetStartY - dy);
 					updatePropInfo();
 					renderPropsCanvas();
 				}
-			} else if (currentPropType == "steering_wheel") {
-				// Track hovered tile for preview highlight
-				var spriteCX = canvas.width / 2;
-				var spriteCY = canvas.height / 2;
-				var off = ship.getVisualOffset(currentDirection);
-				var relX = mx - spriteCX - off.x;
-				var relY = my - spriteCY + off.y;
-				var tile = screenToTile(relX, relY, currentDirection);
-				if (tile.tx != hoveredTileX || tile.ty != hoveredTileY) {
-					hoveredTileX = tile.tx;
-					hoveredTileY = tile.ty;
-					renderPropsCanvas();
-				}
+			} else if ((currentPropType == "ladder_slots" && ladderPlacementMode == "deck") || currentPropType == "steering_wheel" || currentPropType == "masts") {
+				updateHoveredTileForCanvas(canvas, mx, my, currentDirection);
 			}
 		});
 
@@ -1710,7 +1932,6 @@ class ShipEditor extends Page {
 		var prefix = parts[1];
 
 		wheelImages = new Map();
-		wheelImagesLoaded = false;
 		var loadedCount = 0;
 		var totalCount = 8;
 
@@ -1725,14 +1946,12 @@ class ShipEditor extends Page {
 					wheelImages.set(dirKey, img);
 					loadedCount++;
 					if (loadedCount >= totalCount) {
-						wheelImagesLoaded = true;
 						renderPropsCanvas();
 					}
 				};
 				img.onerror = () -> {
 					loadedCount++;
 					if (loadedCount >= totalCount) {
-						wheelImagesLoaded = true;
 						renderPropsCanvas();
 					}
 				};
@@ -1740,7 +1959,6 @@ class ShipEditor extends Page {
 			} else {
 				loadedCount++;
 				if (loadedCount >= totalCount) {
-					wheelImagesLoaded = true;
 					renderPropsCanvas();
 				}
 			}
@@ -1751,30 +1969,104 @@ class ShipEditor extends Page {
 		if (ship == null)
 			return;
 		var d:String = currentDirection;
-		if (currentPropType == "boarding_points") {
-			var bp = ship.getBoardingPoints(currentDirection);
-			jPage.find(".propConfig-boarding_points .propCount").text(Std.string(bp.slots.length));
-			var info = 'Direction: $d | Points: ${bp.slots.length}';
-			jPage.find(".propConfig-boarding_points .propInfo").html(info);
+		if (currentPropType == "ladder_slots") {
+			var deckSlots = ship.getLadderDeckSlots();
+			if (selectedLadderIdx < 0 && deckSlots.slots.length > 0)
+				selectedLadderIdx = 0;
+			if (selectedLadderIdx >= deckSlots.slots.length)
+				selectedLadderIdx = deckSlots.slots.length - 1;
+
+			jPage.find(".propConfig-ladder_slots .propCount").text(Std.string(deckSlots.slots.length));
+			var jSelect = jPage.find(".ladderIndexSelect");
+			jSelect.empty();
+			for (i in 0...deckSlots.slots.length) {
+				var jOption = new J('<option/>');
+				jOption.attr("value", Std.string(i));
+				jOption.text("Ladder " + Std.string(i + 1));
+				if (i == selectedLadderIdx)
+					jOption.attr("selected", "selected");
+				jSelect.append(jOption);
+			}
+			jSelect.prop("disabled", deckSlots.slots.length == 0);
+
+			var selected = selectedLadderIdx >= 0 ? ' | Selected: ${selectedLadderIdx + 1}' : "";
+			var mode = ladderPlacementMode == "board" ? "Board Point" : "Ladder Deck";
+			var info = 'Preview: $d | Mode: $mode | Ladders: ${deckSlots.slots.length}$selected';
+			if (selectedLadderIdx >= 0 && selectedLadderIdx < deckSlots.slots.length) {
+				var deck = deckSlots.slots[selectedLadderIdx];
+				var point = ship.getLadderBoardPoint(selectedLadderIdx, currentDirection);
+				info += ' | Deck: (${deck.tx}, ${deck.ty}) | Board: (${point.x}, ${point.y})';
+			}
+			jPage.find(".propConfig-ladder_slots .propInfo").html(info);
 		} else if (currentPropType == "steering_wheel") {
 			var sw = ship.steeringWheelTile;
 			var hm = ship.helmsmanTile;
 			var info = 'Wheel Tile: (${sw.tx}, ${sw.ty}) | Helmsman Tile: (${hm.tx}, ${hm.ty})';
 			jPage.find(".propConfig-steering_wheel .propInfo").html(info);
+		} else if (currentPropType == "masts") {
+			ship.ensureMastSlotConfigurations();
+			if (selectedMastCount < 1)
+				selectedMastCount = 1;
+			if (selectedMastCount > ship.maxMastCount)
+				selectedMastCount = ship.maxMastCount;
+			var config = ship.getMastSlotConfiguration(selectedMastCount);
+			if (selectedMastIdx < 0 && config.slots.length > 0)
+				selectedMastIdx = 0;
+			if (selectedMastIdx >= config.slots.length)
+				selectedMastIdx = config.slots.length - 1;
+
+			var countSelect = jPage.find(".mastCountSelect");
+			countSelect.empty();
+			for (count in 1...(ship.maxMastCount + 1)) {
+				var countOption = new J('<option/>');
+				countOption.attr("value", Std.string(count));
+				countOption.text(Std.string(count) + (count == 1 ? " mast" : " masts"));
+				if (count == selectedMastCount)
+					countOption.attr("selected", "selected");
+				countSelect.append(countOption);
+			}
+
+			var mastSelect = jPage.find(".mastIndexSelect");
+			mastSelect.empty();
+			for (i in 0...config.slots.length) {
+				var mastOption = new J('<option/>');
+				mastOption.attr("value", Std.string(i));
+				mastOption.text("Mast " + Std.string(i + 1));
+				if (i == selectedMastIdx)
+					mastOption.attr("selected", "selected");
+				mastSelect.append(mastOption);
+			}
+			mastSelect.prop("disabled", config.slots.length == 0);
+
+			var mastInfo = 'Preview: $d | Configuration: $selectedMastCount | Max sails per mast: ${ship.maxSailsPerMast}';
+			if (selectedMastIdx >= 0 && selectedMastIdx < config.slots.length) {
+				var slot = config.slots[selectedMastIdx];
+				mastInfo += ' | Selected: ${selectedMastIdx + 1} | Tile: (${slot.tx}, ${slot.ty})';
+			}
+			jPage.find(".propConfig-masts .propInfo").html(mastInfo);
 		}
 	}
 
 	function capturePropsState():String {
 		if (ship == null)
 			return "{}";
-		var bpObj:haxe.DynamicAccess<Dynamic> = {};
+		var deckSlots = ship.getLadderDeckSlots();
+		var boardObj:haxe.DynamicAccess<Dynamic> = {};
 		for (dir in ShipDirection.all()) {
 			var d:String = dir;
-			var bp = ship.getBoardingPoints(dir);
-			bpObj.set(d, {slots: [for (s in bp.slots) {x: s.x, y: s.y}]});
+			var points = ship.getLadderBoardPoints(dir);
+			boardObj.set(d, {slots: [for (p in points.slots) {x: p.x, y: p.y}]});
+		}
+		ship.ensureMastSlotConfigurations();
+		var mastConfigs:haxe.DynamicAccess<Dynamic> = {};
+		for (count in 1...(ship.maxMastCount + 1)) {
+			var config = ship.getMastSlotConfiguration(count);
+			mastConfigs.set(Std.string(count), {slots: [for (s in config.slots) {tx: s.tx, ty: s.ty}]});
 		}
 		return haxe.Json.stringify({
-			boarding_points: bpObj,
+			ladder_deck_slots: {slots: [for (s in deckSlots.slots) {tx: s.tx, ty: s.ty}]},
+			ladder_board_points: boardObj,
+			mast_slots: {configurations: mastConfigs},
 			steering_wheel: {tx: ship.steeringWheelTile.tx, ty: ship.steeringWheelTile.ty},
 			helmsman: {tx: ship.helmsmanTile.tx, ty: ship.helmsmanTile.ty},
 			steering_wheel_asset: ship.steeringWheelAsset
@@ -1786,15 +2078,63 @@ class ShipEditor extends Page {
 			return;
 		try {
 			var obj:Dynamic = haxe.Json.parse(json);
-			var bpData:haxe.DynamicAccess<Dynamic> = obj.boarding_points;
-			for (dir in ShipDirection.all()) {
-				var d:String = dir;
-				var bpDir:Dynamic = bpData.get(d);
-				if (bpDir != null) {
-					var slotsArr:Array<Dynamic> = bpDir.slots;
-					var bp = ship.getBoardingPoints(dir);
-					bp.slots = [for (s in slotsArr) {x: Std.int(s.x), y: Std.int(s.y)}];
+			var deckData:Dynamic = obj.ladder_deck_slots;
+			if (deckData != null) {
+				var slotsArr:Array<Dynamic> = deckData.slots;
+				var deckSlots = ship.getLadderDeckSlots();
+				deckSlots.slots = [];
+				if (slotsArr != null) {
+					for (s in slotsArr) {
+						deckSlots.slots.push({
+							tx: Reflect.hasField(s, "tx") ? Std.int(Reflect.field(s, "tx")) : 0,
+							ty: Reflect.hasField(s, "ty") ? Std.int(Reflect.field(s, "ty")) : 0
+						});
+					}
 				}
+				var boardData:Dynamic = Reflect.field(obj, "ladder_board_points");
+				for (dir in ShipDirection.all()) {
+					var d:String = dir;
+					var directionData:Dynamic = boardData != null ? Reflect.field(boardData, d) : null;
+					var points = ship.getLadderBoardPoints(dir);
+					points.slots = [];
+					var rawPoints:Array<Dynamic> = directionData != null ? Reflect.field(directionData, "slots") : null;
+					if (rawPoints != null) {
+						for (p in rawPoints)
+							points.slots.push({
+								x: Reflect.hasField(p, "x") ? Std.int(Reflect.field(p, "x")) : 0,
+								y: Reflect.hasField(p, "y") ? Std.int(Reflect.field(p, "y")) : 0
+							});
+					}
+					while (points.slots.length < deckSlots.slots.length)
+						points.slots.push(ship.getDefaultBoardPointForDeck(deckSlots.slots[points.slots.length], dir));
+					while (points.slots.length > deckSlots.slots.length)
+						points.slots.pop();
+				}
+				if (selectedLadderIdx >= deckSlots.slots.length)
+					selectedLadderIdx = deckSlots.slots.length - 1;
+			}
+			var mastData:Dynamic = Reflect.field(obj, "mast_slots");
+			var mastConfigurations:Dynamic = mastData != null ? Reflect.field(mastData, "configurations") : null;
+			if (mastConfigurations != null) {
+				for (count in 1...(ship.maxMastCount + 1)) {
+					var rawConfig:Dynamic = Reflect.field(mastConfigurations, Std.string(count));
+					var rawSlots:Array<Dynamic> = rawConfig != null ? Reflect.field(rawConfig, "slots") : null;
+					if (rawSlots != null) {
+						var config = ship.getMastSlotConfiguration(count);
+						config.slots = [];
+						for (s in rawSlots)
+							config.slots.push({
+								tx: Reflect.hasField(s, "tx") ? Std.int(Reflect.field(s, "tx")) : 0,
+								ty: Reflect.hasField(s, "ty") ? Std.int(Reflect.field(s, "ty")) : 0
+							});
+					}
+				}
+				ship.ensureMastSlotConfigurations();
+				if (selectedMastCount > ship.maxMastCount)
+					selectedMastCount = ship.maxMastCount;
+				var mastConfig = ship.getMastSlotConfiguration(selectedMastCount);
+				if (selectedMastIdx >= mastConfig.slots.length)
+					selectedMastIdx = mastConfig.slots.length - 1;
 			}
 			var swDir:Dynamic = obj.steering_wheel;
 			if (swDir != null) {
@@ -1855,8 +2195,8 @@ class ShipEditor extends Page {
 		ctx.lineTo(canvas.width, spriteCY);
 		ctx.stroke();
 
-		// Draw optional visual grid overlay — auto-enabled for steering_wheel
-		if (showPropsGrid || currentPropType == "steering_wheel") {
+		// Draw optional visual grid overlay. Tile-placement modes keep active deck tiles visible.
+		if (showPropsGrid || currentPropType == "steering_wheel" || currentPropType == "masts" || (currentPropType == "ladder_slots" && ladderPlacementMode == "deck")) {
 			var off = ship.getVisualOffset(currentDirection);
 			drawIsoGrid(ctx, spriteCX + off.x, spriteCY - off.y, currentDirection, 0.5);
 		}
@@ -1867,9 +2207,25 @@ class ShipEditor extends Page {
 		}
 
 		// Draw prop markers based on current type
-		if (currentPropType == "boarding_points") {
-			var bp = ship.getBoardingPoints(currentDirection);
-			drawPropMarkers(ctx, spriteCX, spriteCY, bp.slots, "#44cc44", "B");
+		if (currentPropType == "ladder_slots") {
+			var off = ship.getVisualOffset(currentDirection);
+			var gridCX = spriteCX + off.x;
+			var gridCY = spriteCY - off.y;
+			if (ladderPlacementMode == "deck" && hoveredTileX >= 0 && hoveredTileX < ship.deckGrid.width && hoveredTileY >= 0 && hoveredTileY < ship.deckGrid.height) {
+				drawTileHighlight(ctx, gridCX, gridCY, hoveredTileX, hoveredTileY, currentDirection, "rgba(100,220,100,0.25)");
+			}
+			var deckSlots = ship.getLadderDeckSlots();
+			var boardPoints = ship.getLadderBoardPoints(currentDirection);
+			drawLadderMarkers(ctx, spriteCX, spriteCY, deckSlots.slots, boardPoints.slots);
+		} else if (currentPropType == "masts") {
+			var off = ship.getVisualOffset(currentDirection);
+			var gridCX = spriteCX + off.x;
+			var gridCY = spriteCY - off.y;
+			if (hoveredTileX >= 0 && hoveredTileX < ship.deckGrid.width && hoveredTileY >= 0 && hoveredTileY < ship.deckGrid.height) {
+				drawTileHighlight(ctx, gridCX, gridCY, hoveredTileX, hoveredTileY, currentDirection, "rgba(255,200,50,0.28)");
+			}
+			var mastConfig = ship.getMastSlotConfiguration(selectedMastCount);
+			drawMastMarkers(ctx, spriteCX, spriteCY, mastConfig.slots);
 		} else if (currentPropType == "steering_wheel") {
 			var off = ship.getVisualOffset(currentDirection);
 			var gridCX = spriteCX + off.x;
@@ -1935,26 +2291,75 @@ class ShipEditor extends Page {
 		ctx.restore();
 	}
 
-	function drawPropMarkers(ctx:CanvasRenderingContext2D, cx:Float, cy:Float, slots:Array<PropSlot>, color:String, label:String) {
-		var r = 6.0;
+	function drawMastMarkers(ctx:CanvasRenderingContext2D, cx:Float, cy:Float, slots:Array<TileSlot>) {
 		for (i in 0...slots.length) {
-			var s = slots[i];
-			var sx = cx + s.x;
-			var sy = cy - s.y;
+			var pos = tileSlotToCanvasPosition(cx, cy, slots[i], currentDirection);
+			var selected = selectedMastIdx == i;
 
 			ctx.beginPath();
-			ctx.arc(sx, sy, r, 0, Math.PI * 2);
-			ctx.fillStyle = color;
+			ctx.arc(pos.x, pos.y, 7, 0, Math.PI * 2);
+			ctx.fillStyle = "#cc9a32";
 			ctx.fill();
 			ctx.strokeStyle = "#ffffff";
-			ctx.lineWidth = 1.5;
+			ctx.lineWidth = selected ? 3 : 1.5;
 			ctx.stroke();
 
 			ctx.fillStyle = "#ffffff";
 			ctx.font = "9px sans-serif";
 			ctx.textAlign = "center";
 			ctx.textBaseline = "middle";
-			ctx.fillText(label + Std.string(i + 1), sx, sy);
+			ctx.fillText("M" + Std.string(i + 1), pos.x, pos.y);
+		}
+	}
+
+	function drawLadderMarkers(ctx:CanvasRenderingContext2D, cx:Float, cy:Float, deckSlots:Array<TileSlot>, boardPoints:Array<BoardPoint>) {
+		if (ship == null)
+			return;
+		var r = 6.0;
+		for (i in 0...deckSlots.length) {
+			var deck = deckSlots[i];
+			var deckPos = tileSlotToCanvasPosition(cx, cy, deck, currentDirection);
+			var point = i < boardPoints.length ? boardPoints[i] : ship.getLadderBoardPoint(i, currentDirection);
+			var bx = cx + point.x;
+			var by = cy - point.y;
+			var selected = selectedLadderIdx == i;
+
+			ctx.beginPath();
+			ctx.moveTo(deckPos.x, deckPos.y);
+			ctx.lineTo(bx, by);
+			ctx.strokeStyle = selected ? "rgba(255,255,255,0.8)" : "rgba(100,220,100,0.45)";
+			ctx.lineWidth = selected ? 2 : 1;
+			ctx.stroke();
+
+			ctx.save();
+			ctx.translate(deckPos.x, deckPos.y);
+			ctx.rotate(Math.PI / 4);
+			ctx.fillStyle = "#2f8f4b";
+			ctx.fillRect(-5, -5, 10, 10);
+			ctx.strokeStyle = "#ffffff";
+			ctx.lineWidth = selected && ladderPlacementMode == "deck" ? 3 : 1.5;
+			ctx.strokeRect(-5, -5, 10, 10);
+			ctx.restore();
+
+			ctx.fillStyle = "#ffffff";
+			ctx.font = "8px sans-serif";
+			ctx.textAlign = "center";
+			ctx.textBaseline = "top";
+			ctx.fillText("D" + Std.string(i + 1), deckPos.x, deckPos.y + 8);
+
+			ctx.beginPath();
+			ctx.arc(bx, by, r, 0, Math.PI * 2);
+			ctx.fillStyle = "#44cc44";
+			ctx.fill();
+			ctx.strokeStyle = "#ffffff";
+			ctx.lineWidth = selected && ladderPlacementMode == "board" ? 3 : 1.5;
+			ctx.stroke();
+
+			ctx.fillStyle = "#ffffff";
+			ctx.font = "9px sans-serif";
+			ctx.textAlign = "center";
+			ctx.textBaseline = "middle";
+			ctx.fillText("B" + Std.string(i + 1), bx, by);
 		}
 	}
 
