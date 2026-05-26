@@ -198,6 +198,14 @@ class Definitions {
 		return l;
 	}
 
+	public function createBorderLayerDef(?id:String) : data.def.LayerDef {
+		var l = createLayerDef(IntGrid, id==null ? "borders" : id);
+		l.setupBorderLayer();
+		l.identifier = _project.fixUniqueIdStr(l.identifier, (id)->isLayerNameUnique(id,l));
+		_project.tidy();
+		return l;
+	}
+
 	public function duplicateLayerDef(ld:data.def.LayerDef, ?baseName:String) : Null<data.def.LayerDef> {
 		return pasteLayerDef( Clipboard.createTemp(CLayerDef, ld.toJson()), ld, baseName);
 	}

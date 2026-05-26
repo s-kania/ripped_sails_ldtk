@@ -16,6 +16,11 @@ typedef IntGridValueDefEditor = {
 	var landNonTraversable : Bool;
 }
 
+typedef BlockedBorderPoint = {
+	var gx : Int;
+	var gy : Int;
+}
+
 enum ValueWrapper {
 	V_Int(v:Int);
 	V_Float(v:Float);

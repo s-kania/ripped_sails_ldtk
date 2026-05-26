@@ -35,6 +35,13 @@ class EditLayerDefs extends ui.modal.Panel {
 				jForms.find("input").first().focus().select();
 			}
 
+			function _createBorders() {
+				var ld = project.defs.createBorderLayerDef();
+				select(ld);
+				editor.ge.emit(LayerDefAdded);
+				jForms.find("input").first().focus().select();
+			}
+
 			// Type picker
 			var w = new ui.modal.Dialog(ev.getThis(),"layerTypes");
 			for(k in ldtk.Json.LayerType.getConstructors()) {
@@ -57,6 +64,18 @@ class EditLayerDefs extends ui.modal.Panel {
 				}
 				jDesc.text(desc);
 			}
+
+			var b = new J("<button/>");
+			b.appendTo( w.jContent );
+			b.append( JsTools.createBorderLayerTypeIconAndName() );
+			b.click( function(_) {
+				_createBorders();
+				w.close();
+			});
+
+			var jDesc = new J('<div class="desc"/>');
+			jDesc.appendTo(w.jContent);
+			jDesc.text("Marks blocked movement points on a 3x3 grid inside each cell, including edges, corners, and centers.");
 
 		});
 
@@ -254,13 +273,14 @@ class EditLayerDefs extends ui.modal.Panel {
 		for(k in Type.getEnumConstructs(ldtk.Json.LayerType))
 			jForms.removeClass("type-"+k);
 		jForms.removeClass("type-IntGridAutoLayer");
-		jForms.addClass("type-"+cur.type);
-		if( cur.type==IntGrid && cur.isAutoLayer() )
+		jForms.removeClass("type-Borders");
+		jForms.addClass(cur.isBorderLayer() ? "type-Borders" : "type-"+cur.type);
+		if( cur.type==IntGrid && cur.isAutoLayer() && !cur.isBorderLayer() )
 			jForms.addClass("type-IntGridAutoLayer");
 
-		jForms.find("span.typeIcon").empty().append( JsTools.createLayerTypeIconAndName(cur.type) );
+		jForms.find("span.typeIcon").empty().append( cur.isBorderLayer() ? JsTools.createBorderLayerTypeIconAndName() : JsTools.createLayerTypeIconAndName(cur.type) );
 
-		jContent.find("#typeSpecificTitle").text( cur.type.getName() );
+		jContent.find("#typeSpecificTitle").text( cur.isBorderLayer() ? "Borders" : cur.type.getName() );
 
 
 		// Identifier
@@ -539,6 +559,7 @@ class EditLayerDefs extends ui.modal.Panel {
 		switch cur.type {
 
 			case IntGrid:
+				if( !cur.isBorderLayer() ) {
 				// Guess icons tileset UID
 				if( intGridValuesIconsTdUid==null )
 					for(v in cur.getAllIntGridValues())
@@ -804,6 +825,7 @@ class EditLayerDefs extends ui.modal.Panel {
 					);
 
 				initAutoLayerSelects();
+				}
 
 			case AutoLayer:
 				// Linked layer
@@ -815,7 +837,7 @@ class EditLayerDefs extends ui.modal.Panel {
 				opt.attr("value", -1);
 				opt.text("-- Select an IntGrid layer --");
 
-				var intGridLayers = project.defs.layers.filter( function(ld) return ld.type==IntGrid );
+				var intGridLayers = project.defs.layers.filter( function(ld) return ld.type==IntGrid && !ld.isBorderLayer() );
 				for( ld in intGridLayers ) {
 					var opt = new J("<option/>");
 					opt.appendTo(jSelect);
@@ -969,7 +991,7 @@ class EditLayerDefs extends ui.modal.Panel {
 				jLi.addClass("hidden");
 			jLi.addClass( Std.string(ld.type) );
 
-			jLi.append( JsTools.createLayerTypeIcon2(ld.type) );
+			jLi.append( ld.isBorderLayer() ? JsTools.createBorderLayerTypeIcon2() : JsTools.createLayerTypeIcon2(ld.type) );
 			JsTools.applyListCustomColor(jLi, ld.uiColor, cur==ld);
 
 			jLi.append('<span class="name">'+ld.identifier+'</span>');
