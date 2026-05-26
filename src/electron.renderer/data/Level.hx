@@ -1,6 +1,8 @@
 package data;
 
 class Level {
+	static inline var INVISIBLE_WALLS_LAYER_ID : String = "invisible_walls";
+
 	var _project : Project;
 	public var _world : World;
 
@@ -66,6 +68,22 @@ class Level {
 
 	@:keep public function toString() {
 		return Type.getClassName( Type.getClass(this) ) + '#$iid "$identifier"';
+	}
+
+	inline function isInvisibleWallsLayer(li:data.inst.LayerInstance) {
+		return li.def.identifier==INVISIBLE_WALLS_LAYER_ID;
+	}
+
+	function hasLandNonTraversableAutoRules(li:data.inst.LayerInstance) {
+		if( !li.def.isAutoLayer() )
+			return false;
+
+		for( rg in li.def.autoRuleGroups )
+		for( r in rg.rules )
+			if( r.active && r.landNonTraversable )
+				return true;
+
+		return false;
 	}
 
 
@@ -244,6 +262,11 @@ class Level {
 		}
 
 		for (li in layerInstances) {
+			if( isInvisibleWallsLayer(li) )
+				continue;
+			if( li.def.isBorderLayer() )
+				continue;
+
 			if( (li.def.type == AutoLayer || li.def.type == IntGrid) && li.def.isAutoLayer() ) {
 				// Ensure auto-layer rules have been evaluated so simplified export is complete
 				if( li.autoTilesCache==null || li.autoEntitiesCache==null )
@@ -289,8 +312,32 @@ class Level {
 				}
 			}
 
+			if( li.def.type == Tiles ) {
+				var layerArray : Dynamic = null;
+				for( tileStack in li.gridTiles.keyValueIterator() ) {
+					for( tileInf in tileStack.value ) {
+						if( layerArray==null ) {
+							layerArray = Reflect.field(simpleJson.layers, li.def.identifier);
+							if( layerArray==null ) {
+								layerArray = [];
+								Reflect.setField(simpleJson.layers, li.def.identifier, layerArray);
+							}
+						}
+
+						var o : Dynamic = {
+							x: li.getCx(tileStack.key) * li.def.gridSize + li.pxTotalOffsetX,
+							y: li.getCy(tileStack.key) * li.def.gridSize + li.pxTotalOffsetY,
+							tileNumber: tileInf.tileId,
+						};
+						if( tileInf.flips!=0 )
+							Reflect.setField(o, "flip", tileInf.flips);
+						layerArray.push(o);
+					}
+				}
+			}
+
 			// Export intGridCsv for IntGrid layers
-			if( li.def.type == IntGrid ) {
+			if( li.def.type == IntGrid && !li.def.isBorderLayer() ) {
 				var csv : Array<Int> = [];
 				for(cy in 0...li.cHei)
 				for(cx in 0...li.cWid)
@@ -339,7 +386,7 @@ class Level {
 		// Group entities by identifier
 		var ents = new Map();
 		for(li in layerInstances) {
-			if( li.def.type!=Entities )
+			if( li.def.type!=Entities || isInvisibleWallsLayer(li) )
 				continue;
 
 			for( ei in li.entityInstances ) {
@@ -909,6 +956,30 @@ class Level {
 
 	/* RENDERING *******************/
 
+	inline function markCollisionRect(grid:Array<Array<Int>>, gridSize:Int, pxX:Int, pxY:Int, pxWid:Int, pxHei:Int) {
+		if( pxWid<=0 || pxHei<=0 || grid.length==0 )
+			return;
+
+		var cHei = grid.length;
+		var cWid = grid[0].length;
+		var left = M.floor(pxX / gridSize);
+		var top = M.floor(pxY / gridSize);
+		var right = M.ceil((pxX + pxWid) / gridSize) - 1;
+		var bottom = M.ceil((pxY + pxHei) / gridSize) - 1;
+
+		left = M.imax(0, left);
+		top = M.imax(0, top);
+		right = M.imin(cWid-1, right);
+		bottom = M.imin(cHei-1, bottom);
+
+		if( right<left || bottom<top )
+			return;
+
+		for(cy in top...bottom+1)
+		for(cx in left...right+1)
+			grid[cy][cx] = 1;
+	}
+
 	public function iterateLayerInstancesBottomToTop( eachLayer:data.inst.LayerInstance->Void ) {
 		var i = _project.defs.layers.length-1;
 		while( i>=0 ) {
@@ -946,26 +1017,62 @@ class Level {
 		
 		// Iterate through all layers to find collision layers
 		for (li in layerInstances) {
-			// Pathfinding collision layers are expected to be IntGrid layers
-			if (li.def.type != IntGrid || !li.def.pathfindingCollisionLayer) {
+			if( isInvisibleWallsLayer(li) )
 				continue;
-			}
-			
-			// Iterate through all cells in the layer
-			for (cy in 0...li.cHei) {
-				for (cx in 0...li.cWid) {
-					// Use public methods instead of accessing intGrid directly
-					var value = li.getIntGrid(cx, cy);
-					if (value > 0) { // Only add collision values (non-zero)
-						// Upewnij siu0119 uy017ce indeksy su0105 w dozwolonym zakresie
-						if (cy < cHei && cx < cWid) {
-							this.collisionLayer[cy][cx] = 1; // 1 oznacza blokadu0119
+
+			if (!li.def.pathfindingCollisionLayer)
+				continue;
+
+			switch li.def.type {
+				case IntGrid:
+					for (cy in 0...li.cHei) {
+						for (cx in 0...li.cWid) {
+							var value = li.getIntGrid(cx, cy);
+							if (value > 0)
+								markCollisionRect(
+									this.collisionLayer,
+									gridSize,
+									cx * li.def.gridSize + li.pxTotalOffsetX,
+									cy * li.def.gridSize + li.pxTotalOffsetY,
+									li.def.gridSize,
+									li.def.gridSize
+								);
 						}
 					}
-				}
+
+				case Tiles:
+					for (tileStack in li.gridTiles.keyValueIterator())
+						if( tileStack.value.length>0 )
+							markCollisionRect(
+								this.collisionLayer,
+								gridSize,
+								li.getCx(tileStack.key) * li.def.gridSize + li.pxTotalOffsetX,
+								li.getCy(tileStack.key) * li.def.gridSize + li.pxTotalOffsetY,
+								li.def.gridSize,
+								li.def.gridSize
+							);
+
+				case AutoLayer:
+					if( li.autoTilesCache==null )
+						li.applyAllRules();
+
+					if( li.autoTilesCache!=null )
+						for (ruleMap in li.autoTilesCache)
+							for (coordMap in ruleMap)
+								for (tile in coordMap)
+									markCollisionRect(
+										this.collisionLayer,
+										gridSize,
+										tile.x + li.pxTotalOffsetX,
+										tile.y + li.pxTotalOffsetY,
+										li.def.gridSize,
+										li.def.gridSize
+									);
+
+				case Entities:
 			}
 		}
-		
+
 		// Dodajmy logi w formie console.log/console.table, kou0142re buy0119dy0105 widoczne w konsoli Electron
 		untyped __js__("console.log('Generated collision layer for %s with size %dx%d', {0}, {1}, {2})", this.identifier, cWid, cHei);
 		
@@ -985,7 +1092,7 @@ class Level {
 		var gridSize = _project.defaultGridSize;
 		var cWid = M.ceil(pxWid / gridSize);
 		var cHei = M.ceil(pxHei / gridSize);
-		
+
 		// Initialize empty 2D array
 		var landWalls : Array<Array<Int>> = [];
 		for (y in 0...cHei) {
@@ -995,9 +1102,130 @@ class Level {
 			}
 			landWalls.push(row);
 		}
-		
+
 		// Iterate through all layers
 		for (li in layerInstances) {
+			var isInvisibleWalls = isInvisibleWallsLayer(li);
+			if( li.def.isAutoLayer() && (isInvisibleWalls || hasLandNonTraversableAutoRules(li)) && (li.autoTilesCache==null || li.autoEntitiesCache==null) )
+				li.applyAllRules();
+
+			if( isInvisibleWalls ) {
+				switch li.def.type {
+					case IntGrid:
+						for (cy in 0...li.cHei)
+						for (cx in 0...li.cWid)
+							if (li.getIntGrid(cx, cy) != 0)
+								markCollisionRect(
+									landWalls,
+									gridSize,
+									cx * li.def.gridSize + li.pxTotalOffsetX,
+									cy * li.def.gridSize + li.pxTotalOffsetY,
+									li.def.gridSize,
+									li.def.gridSize
+								);
+
+						if( li.autoTilesCache!=null )
+							for (ruleMap in li.autoTilesCache)
+								for (coordMap in ruleMap)
+									for (tile in coordMap)
+										markCollisionRect(
+											landWalls,
+											gridSize,
+											tile.x + li.pxTotalOffsetX,
+											tile.y + li.pxTotalOffsetY,
+											li.def.gridSize,
+											li.def.gridSize
+										);
+
+						if( li.autoEntitiesCache!=null )
+							for (ruleMap in li.autoEntitiesCache)
+								for (coordMap in ruleMap)
+									for (e in coordMap) {
+										var ed = _project.defs.getEntityDef(e.defUid);
+										if( ed!=null )
+											markCollisionRect(
+												landWalls,
+												gridSize,
+												M.round(e.x - ed.width*ed.pivotX) + li.pxTotalOffsetX,
+												M.round(e.y - ed.height*ed.pivotY) + li.pxTotalOffsetY,
+												ed.width,
+												ed.height
+											);
+										else
+											markCollisionRect(
+												landWalls,
+												gridSize,
+												Std.int(e.x / li.def.gridSize) * li.def.gridSize + li.pxTotalOffsetX,
+												Std.int(e.y / li.def.gridSize) * li.def.gridSize + li.pxTotalOffsetY,
+												li.def.gridSize,
+												li.def.gridSize
+											);
+									}
+
+					case Tiles:
+						for (tileStack in li.gridTiles.keyValueIterator())
+							if( tileStack.value.length>0 )
+								markCollisionRect(
+									landWalls,
+									gridSize,
+									li.getCx(tileStack.key) * li.def.gridSize + li.pxTotalOffsetX,
+									li.getCy(tileStack.key) * li.def.gridSize + li.pxTotalOffsetY,
+									li.def.gridSize,
+									li.def.gridSize
+								);
+
+					case AutoLayer:
+						if( li.autoTilesCache!=null )
+							for (ruleMap in li.autoTilesCache)
+								for (coordMap in ruleMap)
+									for (tile in coordMap)
+										markCollisionRect(
+											landWalls,
+											gridSize,
+											tile.x + li.pxTotalOffsetX,
+											tile.y + li.pxTotalOffsetY,
+											li.def.gridSize,
+											li.def.gridSize
+										);
+
+						if( li.autoEntitiesCache!=null )
+							for (ruleMap in li.autoEntitiesCache)
+								for (coordMap in ruleMap)
+									for (e in coordMap) {
+										var ed = _project.defs.getEntityDef(e.defUid);
+										if( ed!=null )
+											markCollisionRect(
+												landWalls,
+												gridSize,
+												M.round(e.x - ed.width*ed.pivotX) + li.pxTotalOffsetX,
+												M.round(e.y - ed.height*ed.pivotY) + li.pxTotalOffsetY,
+												ed.width,
+												ed.height
+											);
+										else
+											markCollisionRect(
+												landWalls,
+												gridSize,
+												Std.int(e.x / li.def.gridSize) * li.def.gridSize + li.pxTotalOffsetX,
+												Std.int(e.y / li.def.gridSize) * li.def.gridSize + li.pxTotalOffsetY,
+												li.def.gridSize,
+												li.def.gridSize
+											);
+									}
+
+					case Entities:
+						for (ei in li.entityInstances)
+							markCollisionRect(
+								landWalls,
+								gridSize,
+								ei.left + li.pxTotalOffsetX,
+								ei.top + li.pxTotalOffsetY,
+								ei.width,
+								ei.height
+							);
+				}
+			}
+
 			if (li.def.type == IntGrid) {
 				// Check IntGrid values marked as landNonTraversable
 				for (cy in 0...li.cHei) {
@@ -1006,9 +1234,14 @@ class Level {
 						if (value > 0) {
 							var valueDef = li.def.getIntGridValueDef(value);
 							if (valueDef != null && valueDef.landNonTraversable) {
-								if (cy < cHei && cx < cWid) {
-									landWalls[cy][cx] = 1;
-								}
+								markCollisionRect(
+									landWalls,
+									gridSize,
+									cx * li.def.gridSize + li.pxTotalOffsetX,
+									cy * li.def.gridSize + li.pxTotalOffsetY,
+									li.def.gridSize,
+									li.def.gridSize
+								);
 							}
 						}
 					}
@@ -1029,11 +1262,14 @@ class Level {
 						for (coordId in ruleResults.keys()) {
 							var tiles = ruleResults.get(coordId);
 							for (t in tiles) {
-								var cx = Std.int(t.x / li.def.gridSize);
-								var cy = Std.int(t.y / li.def.gridSize);
-								if (cy >= 0 && cy < cHei && cx >= 0 && cx < cWid) {
-									landWalls[cy][cx] = 1;
-								}
+								markCollisionRect(
+									landWalls,
+									gridSize,
+									t.x + li.pxTotalOffsetX,
+									t.y + li.pxTotalOffsetY,
+									li.def.gridSize,
+									li.def.gridSize
+								);
 							}
 						}
 					}
@@ -1054,11 +1290,25 @@ class Level {
 						for (coordId in entityResults.keys()) {
 							var entities = entityResults.get(coordId);
 							for (e in entities) {
-								var cx = Std.int(e.x / li.def.gridSize);
-								var cy = Std.int(e.y / li.def.gridSize);
-								if (cy >= 0 && cy < cHei && cx >= 0 && cx < cWid) {
-									landWalls[cy][cx] = 1;
-								}
+								var ed = _project.defs.getEntityDef(e.defUid);
+								if( ed!=null )
+									markCollisionRect(
+										landWalls,
+										gridSize,
+										M.round(e.x - ed.width*ed.pivotX) + li.pxTotalOffsetX,
+										M.round(e.y - ed.height*ed.pivotY) + li.pxTotalOffsetY,
+										ed.width,
+										ed.height
+									);
+								else
+									markCollisionRect(
+										landWalls,
+										gridSize,
+										Std.int(e.x / li.def.gridSize) * li.def.gridSize + li.pxTotalOffsetX,
+										Std.int(e.y / li.def.gridSize) * li.def.gridSize + li.pxTotalOffsetY,
+										li.def.gridSize,
+										li.def.gridSize
+									);
 							}
 						}
 					}
@@ -1067,5 +1317,74 @@ class Level {
 		}
 		
 		return landWalls;
+	}
+
+	/** Generate blocked 3x3 movement points grouped by 1-based tile coords. **/
+	public function generateBorderWalls() : Dynamic {
+		var blocked : Map<String, Map<String,String>> = new Map();
+		var gridSize = _project.defaultGridSize;
+		var cWid = M.ceil(pxWid / gridSize);
+		var cHei = M.ceil(pxHei / gridSize);
+
+		function key(x:Int, y:Int) {
+			return x+","+y;
+		}
+
+		function posName(lx:Int, ly:Int) {
+			if( lx==0 && ly==0 ) return "NW";
+			if( lx==1 && ly==0 ) return "N";
+			if( lx==2 && ly==0 ) return "NE";
+			if( lx==0 && ly==1 ) return "W";
+			if( lx==1 && ly==1 ) return "C";
+			if( lx==2 && ly==1 ) return "E";
+			if( lx==0 && ly==2 ) return "SW";
+			if( lx==1 && ly==2 ) return "S";
+			if( lx==2 && ly==2 ) return "SE";
+			return null;
+		}
+
+		function add(tileX:Int, tileY:Int, pos:String) {
+			var k = key(tileX+1, tileY+1);
+			if( !blocked.exists(k) )
+				blocked.set(k, new Map());
+			blocked.get(k).set(pos, pos);
+		}
+
+		for(li in layerInstances) {
+			if( !li.def.isBorderLayer() )
+				continue;
+
+			li.iterateBlockedBorderPoints(pt->{
+				var gx = M.round((pt.gx * li.def.gridSize * 0.5 + li.pxTotalOffsetX) / gridSize * 2);
+				var gy = M.round((pt.gy * li.def.gridSize * 0.5 + li.pxTotalOffsetY) / gridSize * 2);
+
+				var left = M.floor((gx-2) / 2);
+				var right = M.floor(gx / 2);
+				var top = M.floor((gy-2) / 2);
+				var bottom = M.floor(gy / 2);
+
+				for(tileY in top...bottom+1)
+				for(tileX in left...right+1) {
+					if( tileX<0 || tileX>=cWid || tileY<0 || tileY>=cHei )
+						continue;
+
+					var lx = gx - tileX*2;
+					var ly = gy - tileY*2;
+					var pos = posName(lx,ly);
+					if( pos!=null )
+						add(tileX, tileY, pos);
+				}
+			});
+		}
+
+		var out : Dynamic = {};
+		for(entry in blocked.keyValueIterator()) {
+			var positions = [];
+			for(pos in ["NW","N","NE","W","C","E","SW","S","SE"])
+				if( entry.value.exists(pos) )
+					positions.push(pos);
+			Reflect.setField(out, entry.key, positions);
+		}
+		return out;
 	}
 }

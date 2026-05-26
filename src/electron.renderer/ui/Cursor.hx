@@ -91,6 +91,13 @@ class Cursor {
 					case _: true;
 				}
 
+			case BorderPointGrid(li, cx, cy, gx, gy, color):
+				switch type {
+					case BorderPointGrid(li2, cx2, cy2, gx2, gy2, color2):
+						li2!=li || cx2!=cx || cy2!=cy || gx2!=gx || gy2!=gy || color2!=color;
+					case _: true;
+				}
+
 			case Link(fx, fy, tx, ty, color):
 				switch type {
 					case Link(fx2,fy2, tx2,ty2, color2): tx!=tx2 || ty!=ty2 || color!=color2;
@@ -114,6 +121,7 @@ class Cursor {
 				case GridRect(li, cx, cy, wid, hei, col): col;
 				case Entity(li, def, ei, x, y, highlight): ei==null ? def.color : ei.getSmartColor(false);
 				case Tiles(li, tileIds, cx, cy, flips): 0xffffff;
+				case BorderPointGrid(li, cx, cy, gx, gy, color): color;
 				case Link(fx, fy, tx, ty, color): color;
 				case _: 0xffcc00;
 			};
@@ -244,6 +252,45 @@ class Cursor {
 					}
 				}
 
+			case BorderPointGrid(li, cx, cy, gx, gy, color):
+				initRender();
+				setNativeCursor("cell");
+
+				var gs = li.def.gridSize;
+				var half = gs * 0.5;
+
+				g.lineStyle(3, 0x0, 0.45);
+				g.drawRect(0, 0, gs, gs);
+				g.moveTo(half, 0);
+				g.lineTo(half, gs);
+				g.moveTo(0, half);
+				g.lineTo(gs, half);
+
+				g.lineStyle(1, 0xffffff, 0.55);
+				g.drawRect(0, 0, gs, gs);
+				g.moveTo(half, 0);
+				g.lineTo(half, gs);
+				g.moveTo(0, half);
+				g.lineTo(gs, half);
+
+				for(py in 0...3)
+				for(px in 0...3) {
+					var x = px * half;
+					var y = py * half;
+					g.beginFill(0x0, 0.45);
+					g.drawCircle(x, y, 1.25, 8);
+					g.beginFill(0xffffff, 0.65);
+					g.drawCircle(x, y, 0.65, 8);
+				}
+				g.endFill();
+
+				var localX = (gx - cx*2) * half;
+				var localY = (gy - cy*2) * half;
+				g.lineStyle(2, 0x0, 0.8);
+				g.drawCircle(localX, localY, 2.75, 14);
+				g.lineStyle(1.25, color, 1);
+				g.drawCircle(localX, localY, 2.2, 14);
+
 			case Link(fx, fy, tx, ty, color):
 				initRender();
 
@@ -317,6 +364,12 @@ class Cursor {
 					centerLabelAbove( ( 0.5-def.pivotX )*w, (0-def.pivotY)*h );
 
 				case Tiles(li, tileIds, cx, cy, flips):
+					root.x += ( li.pxParallaxX + cx*li.def.scaledGridSize ) * cam.adjustedZoom;
+					root.y += ( li.pxParallaxY + cy*li.def.scaledGridSize ) * cam.adjustedZoom;
+					applyLayerScale( li.def.getScale() );
+					centerLabelAbove(li.def.gridSize*0.5, 0);
+
+				case BorderPointGrid(li, cx, cy, gx, gy, color):
 					root.x += ( li.pxParallaxX + cx*li.def.scaledGridSize ) * cam.adjustedZoom;
 					root.y += ( li.pxParallaxY + cy*li.def.scaledGridSize ) * cam.adjustedZoom;
 					applyLayerScale( li.def.getScale() );

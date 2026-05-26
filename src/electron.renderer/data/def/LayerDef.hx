@@ -23,6 +23,7 @@ class LayerDef {
 	public var canSelectWhenInactive = true;
 	public var renderInWorldView = true;
 	public var pathfindingCollisionLayer = false;
+	public var borderLayer = false;
 	public var pxOffsetX : Int = 0;
 	public var pxOffsetY : Int = 0;
 	public var parallaxFactorX : Float = 0.;
@@ -111,6 +112,7 @@ class LayerDef {
 		o.canSelectWhenInactive = JsonTools.readBool(json.canSelectWhenInactive, true);
 		o.renderInWorldView = JsonTools.readBool(json.renderInWorldView, true);
 		o.pathfindingCollisionLayer = JsonTools.readBool(untyped json.pathfindingCollisionLayer, false);
+		o.borderLayer = JsonTools.readBool(untyped json.borderLayer, false);
 		o.pxOffsetX = JsonTools.readInt(json.pxOffsetX, 0);
 		o.pxOffsetY = JsonTools.readInt(json.pxOffsetY, 0);
 		o.parallaxFactorX = JsonTools.readFloat(json.parallaxFactorX, 0);
@@ -168,6 +170,9 @@ class LayerDef {
 		o.tilesetDefUid = JsonTools.readNullableInt(json.tilesetDefUid);
 		o.tilePivotX = JsonTools.readFloat(json.tilePivotX, 0);
 		o.tilePivotY = JsonTools.readFloat(json.tilePivotY, 0);
+
+		if( o.borderLayer )
+			o.setupBorderLayer();
 
 		return o;
 	}
@@ -230,8 +235,25 @@ class LayerDef {
 
 		// Add custom field using untyped
 		untyped json.pathfindingCollisionLayer = pathfindingCollisionLayer;
+		untyped json.borderLayer = borderLayer;
 
 		return json;
+	}
+
+	public inline function isBorderLayer() {
+		return borderLayer;
+	}
+
+	public function setupBorderLayer() {
+		borderLayer = true;
+		type = IntGrid;
+		intGridValues = [];
+		intGridValuesGroups = [];
+		tilesetDefUid = null;
+		autoSourceLayerDefUid = null;
+		autoRuleGroups = [];
+		autoTilesKilledByOtherLayerUid = null;
+		pathfindingCollisionLayer = false;
 	}
 
 	public inline function getScale() : Float {

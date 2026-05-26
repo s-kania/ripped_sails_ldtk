@@ -242,6 +242,10 @@ class JsTools {
 		return icon;
 	}
 
+	public static function createBorderLayerTypeIcon2() : js.jquery.JQuery {
+		return new J('<span class="icon intGrid"/>');
+	}
+
 	public static function createLayerTypeIconAndName(type:ldtk.Json.LayerType) : js.jquery.JQuery {
 		var wrapper = new J('<span class="layerType"/>');
 
@@ -250,6 +254,17 @@ class JsTools {
 		var name = new J('<span class="name"/>');
 		name.appendTo(wrapper);
 		name.text( L.getLayerType(type) );
+
+		return wrapper;
+	}
+
+	public static function createBorderLayerTypeIconAndName() : js.jquery.JQuery {
+		var wrapper = new J('<span class="layerType"/>');
+		wrapper.append( createBorderLayerTypeIcon2() );
+
+		var name = new J('<span class="name"/>');
+		name.appendTo(wrapper);
+		name.text("Borders");
 
 		return wrapper;
 	}

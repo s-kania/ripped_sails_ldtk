@@ -34,10 +34,12 @@ class Walls extends Exporter {
 							landWalls.push([x+1, y+1]);
 				}
 
+				var borderWalls = l.generateBorderWalls();
+
 				var fp = outputPath.clone();
 				fp.fileName = l.identifier;
 				fp.extension = "json";
-				var json = dn.data.JsonPretty.stringify({ sea_walls:seaWalls, land_walls:landWalls }, Minified);
+				var json = dn.data.JsonPretty.stringify({ sea_walls:seaWalls, land_walls:landWalls, border_walls:borderWalls }, Minified);
 				addOuputFile(fp.full, haxe.io.Bytes.ofString(json));
 			}
 	}

@@ -42,6 +42,7 @@ class LayerInstance {
 
 	// Layer content
 	var intGrid : Map<Int,Int> = new Map(); // <coordId, value>
+	var blockedBorderPoints : Map<String, BlockedBorderPoint> = new Map(); // <canonical point key, point>
 	public var entityInstances : Array<EntityInstance> = [];
 	public var gridTiles : Map<Int, Array<GridTileInfos>> = []; // <coordId, tileinfos>
 	var overrideTilesetUid : Null<Int>;
@@ -239,7 +240,7 @@ class LayerInstance {
 
 			intGridCsv: {
 				var csv : Array<Int> = [];
-				if( def.type==IntGrid )
+				if( def.type==IntGrid && !def.isBorderLayer() )
 					for(cy in 0...cHei)
 					for(cx in 0...cWid)
 						csv.push( getIntGrid(cx,cy) );
@@ -297,6 +298,9 @@ class LayerInstance {
 			entityInstances: entityInstances.map( function(ei) return ei.toJson(this) ),
 		};
 
+		if( def.isBorderLayer() )
+			untyped json.blockedBorderPoints = getBlockedBorderPointsJson();
+
 		if( _project.hasFlag(ExportPreCsvIntGridFormat) )
 			json.intGrid = {
 				var arr = [];
@@ -341,9 +345,16 @@ class LayerInstance {
 	public function isEmpty() {
 		switch def.type {
 			case IntGrid:
-				for(e in intGrid)
-					return false;
-				return true;
+				if( def.isBorderLayer() ) {
+					for(pt in blockedBorderPoints)
+						return false;
+					return true;
+				}
+				else {
+					for(e in intGrid)
+						return false;
+					return true;
+				}
 
 			case AutoLayer:
 				for(rg in def.autoRuleGroups)
@@ -371,6 +382,35 @@ class LayerInstance {
 		li.pxOffsetX = JsonTools.readInt(json.pxOffsetX, 0);
 		li.pxOffsetY = JsonTools.readInt(json.pxOffsetY, 0);
 		li.visible = JsonTools.readBool(json.visible, true);
+
+		if( untyped json.blockedBorderPoints!=null ) {
+			var all : Array<Dynamic> = JsonTools.readArray(untyped json.blockedBorderPoints);
+			for(raw in all) {
+				if( raw==null || raw.length<2 )
+					continue;
+
+				var gx = JsonTools.readInt(raw[0]);
+				var gy = JsonTools.readInt(raw[1]);
+				li.setBlockedBorderPoint(gx, gy, false);
+			}
+		}
+		else if( untyped json.borderWalls!=null ) {
+			var all : Array<Dynamic> = JsonTools.readArray(untyped json.borderWalls);
+			for(raw in all) {
+				if( raw==null || raw.length<4 )
+					continue;
+
+				var x1 = JsonTools.readInt(raw[0]);
+				var y1 = JsonTools.readInt(raw[1]);
+				var x2 = JsonTools.readInt(raw[2]);
+				var y2 = JsonTools.readInt(raw[3]);
+				if( M.iabs(x1-x2) + M.iabs(y1-y2) == 1 ) {
+					var gx = x1==x2 ? x1*2+1 : M.imax(x1,x2)*2;
+					var gy = y1==y2 ? y1*2+1 : M.imax(y1,y2)*2;
+					li.setBlockedBorderPoint(gx, gy, false);
+				}
+			}
+		}
 
 		if( json.intGridCsv==null ) {
 			// Read old pre-CSV format
@@ -506,7 +546,9 @@ class LayerInstance {
 		switch def.type {
 			case IntGrid, AutoLayer:
 				// Remove lost intGrid values
-				if( def.type==IntGrid )
+				if( def.isBorderLayer() )
+					anyChange = tidyBlockedBorderPoints() || anyChange;
+				else if( def.type==IntGrid )
 					for(cy in 0...cHei)
 					for(cx in 0...cWid)
 						if( hasIntGrid(cx,cy) && !def.hasIntGridValue( getIntGrid(cx,cy) ) ) {
@@ -576,16 +618,28 @@ class LayerInstance {
 		var cDeltaY = Std.int( totalOffsetY / def.gridSize);
 		switch def.type {
 			case IntGrid:
-				// Remap coords
-				var old = intGrid;
-				intGrid = new Map();
-				for(cx in 0...cWid)
-				for(cy in 0...cHei) {
-					var newCx = cx + cDeltaX;
-					var newCy = cy + cDeltaY;
-					var newCoordId = newCx + newCy * newCWid;
-					if( old.exists(coordId(cx,cy)) && newCx>=0 && newCx<newCWid && newCy>=0 && newCy<newCHei )
-						intGrid.set( newCoordId, old.get(coordId(cx,cy)) );
+				if( def.isBorderLayer() ) {
+					var old = blockedBorderPoints;
+					blockedBorderPoints = new Map();
+					for(pt in old) {
+						var gx = pt.gx + cDeltaX*2;
+						var gy = pt.gy + cDeltaY*2;
+						if( isValidBorderPointInBounds(gx,gy,newCWid,newCHei) )
+							setBlockedBorderPoint(gx,gy,false);
+					}
+				}
+				else {
+					// Remap coords
+					var old = intGrid;
+					intGrid = new Map();
+					for(cx in 0...cWid)
+					for(cy in 0...cHei) {
+						var newCx = cx + cDeltaX;
+						var newCy = cy + cDeltaY;
+						var newCoordId = newCx + newCy * newCWid;
+						if( old.exists(coordId(cx,cy)) && newCx>=0 && newCx<newCWid && newCy>=0 && newCy<newCHei )
+							intGrid.set( newCoordId, old.get(coordId(cx,cy)) );
+					}
 				}
 
 			case AutoLayer:
@@ -635,11 +689,75 @@ class LayerInstance {
 
 	public inline function hasAnyGridValue(cx:Int, cy:Int) {
 		return switch def.type {
-			case IntGrid: hasIntGrid(cx,cy);
+			case IntGrid: def.isBorderLayer() ? false : hasIntGrid(cx,cy);
 			case Tiles: hasAnyGridTile(cx,cy);
 			case Entities: false;
 			case AutoLayer: false;
 		}
+	}
+
+	inline function isValidBorderPointInBounds(gx:Int, gy:Int, wid:Int, hei:Int) {
+		return gx>=0 && gx<=wid*2 && gy>=0 && gy<=hei*2;
+	}
+
+	public inline function isValidBorderPoint(gx:Int, gy:Int) {
+		return isValidBorderPointInBounds(gx, gy, cWid, cHei);
+	}
+
+	inline function borderPointKey(gx:Int, gy:Int) {
+		return gx+","+gy;
+	}
+
+	public function hasBlockedBorderPoint(gx:Int, gy:Int) {
+		return blockedBorderPoints.exists(borderPointKey(gx,gy));
+	}
+
+	public function setBlockedBorderPoint(gx:Int, gy:Int, useAsyncRender:Bool) {
+		if( !def.isBorderLayer() || !isValidBorderPoint(gx,gy) )
+			return false;
+
+		var key = borderPointKey(gx,gy);
+		var changed = !blockedBorderPoints.exists(key);
+		blockedBorderPoints.set(key, { gx:gx, gy:gy });
+		return changed;
+	}
+
+	public function removeBlockedBorderPoint(gx:Int, gy:Int, useAsyncRender:Bool) {
+		if( !def.isBorderLayer() )
+			return false;
+		return blockedBorderPoints.remove(borderPointKey(gx,gy));
+	}
+
+	public function toggleBlockedBorderPoint(gx:Int, gy:Int, useAsyncRender:Bool) {
+		return hasBlockedBorderPoint(gx,gy)
+			? removeBlockedBorderPoint(gx,gy,useAsyncRender)
+			: setBlockedBorderPoint(gx,gy,useAsyncRender);
+	}
+
+	public function iterateBlockedBorderPoints(run:BlockedBorderPoint->Void) {
+		for(pt in blockedBorderPoints)
+			run(pt);
+	}
+
+	function tidyBlockedBorderPoints() {
+		var old = blockedBorderPoints;
+		blockedBorderPoints = new Map();
+		var anyChange = false;
+		for(pt in old) {
+			if( isValidBorderPoint(pt.gx,pt.gy) )
+				setBlockedBorderPoint(pt.gx,pt.gy,false);
+			else
+				anyChange = true;
+		}
+		return anyChange;
+	}
+
+	function getBlockedBorderPointsJson() : Array<Array<Int>> {
+		var out = [];
+		if( def.isBorderLayer() )
+			for(pt in blockedBorderPoints)
+				out.push([pt.gx, pt.gy]);
+		return out;
 	}
 
 
@@ -842,15 +960,27 @@ class LayerInstance {
 
 		switch def.type {
 			case IntGrid:
-				var newIntGrid = new Map();
-				for(cy in 0...cHei)
-				for(cx in 0...cWid)
-					if( hasIntGrid(cx,cy) && cx<newCWid && cy<newCHei )
-						newIntGrid.set( _newCoordId(cx,cy), getIntGrid(cx,cy));
-				intGrid = newIntGrid;
-				if( def.isAutoLayer() ) {
-					autoTilesCache = null;
-					autoEntitiesCache = null;
+				if( def.isBorderLayer() ) {
+					var old = blockedBorderPoints;
+					blockedBorderPoints = new Map();
+					for(pt in old) {
+						var gx = M.round(pt.gx * oldGrid / newGrid);
+						var gy = M.round(pt.gy * oldGrid / newGrid);
+						if( isValidBorderPointInBounds(gx,gy,newCWid,newCHei) )
+							setBlockedBorderPoint(gx,gy,false);
+					}
+				}
+				else {
+					var newIntGrid = new Map();
+					for(cy in 0...cHei)
+					for(cx in 0...cWid)
+						if( hasIntGrid(cx,cy) && cx<newCWid && cy<newCHei )
+							newIntGrid.set( _newCoordId(cx,cy), getIntGrid(cx,cy));
+					intGrid = newIntGrid;
+					if( def.isAutoLayer() ) {
+						autoTilesCache = null;
+						autoEntitiesCache = null;
+					}
 				}
 
 			case Entities:

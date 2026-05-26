@@ -80,6 +80,43 @@ class LayerRender {
 		tg.addTransform(tx, ty, sx, sy, 0, t);
 	}
 
+	static function renderBorderWalls(li:data.inst.LayerInstance, target:h2d.Object) {
+		var g = new h2d.Graphics(target);
+		var gs = li.def.gridSize;
+		var points : Array<data.DataTypes.BlockedBorderPoint> = [];
+		var pointMap : Map<String, data.DataTypes.BlockedBorderPoint> = new Map();
+		li.iterateBlockedBorderPoints(pt->{
+			points.push(pt);
+			pointMap.set(pt.gx+","+pt.gy, pt);
+		});
+
+		function px(gx:Int) return li.pxTotalOffsetX + gx * gs * 0.5;
+		function py(gy:Int) return li.pxTotalOffsetY + gy * gs * 0.5;
+		function drawSegment(pt:data.DataTypes.BlockedBorderPoint, nx:Int, ny:Int) {
+			g.lineStyle(4, 0x0, 0.35);
+			g.moveTo(px(pt.gx), py(pt.gy));
+			g.lineTo(px(nx), py(ny));
+			g.lineStyle(2, 0x49d7ff, 0.75);
+			g.moveTo(px(pt.gx), py(pt.gy));
+			g.lineTo(px(nx), py(ny));
+		}
+
+		for(pt in points) {
+			if( pointMap.exists((pt.gx+1)+","+pt.gy) )
+				drawSegment(pt, pt.gx+1, pt.gy);
+			if( pointMap.exists(pt.gx+","+(pt.gy+1)) )
+				drawSegment(pt, pt.gx, pt.gy+1);
+		}
+
+		for(pt in points) {
+			g.beginFill(0x0, 0.75);
+			g.drawCircle(px(pt.gx), py(pt.gy), 1.75, 8);
+			g.beginFill(0x49d7ff, 1);
+			g.drawCircle(px(pt.gx), py(pt.gy), 1, 8);
+		}
+		g.endFill();
+	}
+
 	public function render(li:data.inst.LayerInstance, renderAutoLayers=true, ?target:h2d.Object) {
 		// Cleanup
 		if( root!=null )
@@ -114,6 +151,11 @@ class LayerRender {
 
 		switch li.def.type {
 		case IntGrid, AutoLayer:
+			if( li.def.isBorderLayer() ) {
+				renderBorderWalls(li, renderTarget);
+				return;
+			}
+
 			var td = li.getTilesetDef();
 
 			if( li.def.isAutoLayer() && renderAutoLayers ) {
@@ -315,6 +357,9 @@ class LayerRender {
 		var out = [];
 		switch li.def.type {
 			case IntGrid, Tiles, AutoLayer:
+				if( li.def.isBorderLayer() )
+					return out;
+
 				// Tiles
 				if( li.def.isAutoLayer() || li.def.type==Tiles ) {
 					render(li);
@@ -355,6 +400,9 @@ class LayerRender {
 	public function drawToTexture(tex:h3d.mat.Texture, p:data.Project, l:data.Level, li:data.inst.LayerInstance) : Bool {
 		switch li.def.type {
 		case IntGrid, Tiles, AutoLayer:
+			if( li.def.isBorderLayer() )
+				return false;
+
 			if( li.def.isAutoLayer() || li.def.type==Tiles ) {
 				// Tiles
 				render(li);

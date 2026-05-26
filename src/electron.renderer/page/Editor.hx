@@ -923,7 +923,7 @@ class Editor extends Page {
 		if( !allLayerTools.exists(curLayerDef.uid) ) {
 			var t : tool.LayerTool<Dynamic> = switch curLayerDef.type {
 				case AutoLayer: new tool.lt.DoNothing();
-				case IntGrid: new tool.lt.IntGridTool();
+				case IntGrid: curLayerDef.isBorderLayer() ? new tool.lt.BorderTool() : new tool.lt.IntGridTool();
 				case Entities: new tool.lt.EntityTool();
 				case Tiles: new tool.lt.TileTool();
 			}

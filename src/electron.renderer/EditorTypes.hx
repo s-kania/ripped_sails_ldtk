@@ -114,6 +114,7 @@ enum CursorType {
 	GridRect(li:data.inst.LayerInstance, cx:Int, cy:Int, wid:Int, hei:Int, ?col:UInt);
 	Entity(li:data.inst.LayerInstance, def:data.def.EntityDef, ?ei:data.inst.EntityInstance, x:Int, y:Int, highlight:Bool);
 	Tiles(li:data.inst.LayerInstance, tileIds:Array<Int>, cx:Int, cy:Int, flips:Int);
+	BorderPointGrid(li:data.inst.LayerInstance, cx:Int, cy:Int, gx:Int, gy:Int, color:UInt);
 	Link(fx:Float, fy:Float, tx:Float, ty:Float, color:UInt);
 }
 
